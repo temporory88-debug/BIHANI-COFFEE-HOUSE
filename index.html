@@ -461,7 +461,7 @@
   <div class="check-ring"><svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg></div>
   <h2 class="cinzel">Order Sent!</h2>
   <p>Kitchen मा पुगिसक्यो · Est. 15–20 mins</p>
-  <div class="order-no"><div class="l">Order Number</div><div class="v mono">#0042</div></div>
+  <div class="order-no"><div class="l">Order Number</div><div class="v mono" id="successOrderNo">#0042</div></div>
   <div class="success-detail">
     <div class="sd-row"><span class="n">Chicken Momo × 1</span><span>Rs 220</span></div>
     <div class="sd-row"><span class="n">Cafe Latte × 2</span><span>Rs 360</span></div>
@@ -527,6 +527,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
   // ===== Critical UI setup — runs FIRST, independent of Firebase =====
@@ -548,6 +549,7 @@
   const firebaseConfig = {
     apiKey: "AIzaSyB-egkmW0c1s0HnttLBhpuuXljGcrWyRjQ",
     authDomain: "bihani-coffee-house.firebaseapp.com",
+    databaseURL: "https://bihani-coffee-house-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "bihani-coffee-house",
     storageBucket: "bihani-coffee-house.firebasestorage.app",
     messagingSenderId: "175493614771",
@@ -555,7 +557,8 @@
     measurementId: "G-2DNHWRTM8Q"
   };
   window.firebaseReady = false;
-  let db, menuCol;
+  window.rtdbReady = false;
+  let db, menuCol, rtdb, ordersRef, tablesRef;
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
@@ -564,6 +567,15 @@
   } catch(e) {
     console.error('Firebase init failed:', e);
     window.firebaseReady = false;
+  }
+  try {
+    rtdb = firebase.database();
+    ordersRef = rtdb.ref('orders');
+    tablesRef = rtdb.ref('tables');
+    window.rtdbReady = true;
+  } catch(e) {
+    console.error('Realtime Database init failed:', e);
+    window.rtdbReady = false;
   }
 </script>
 <script>
@@ -664,7 +676,47 @@
   }
   function openCart(){ document.getElementById('cartSheet').classList.add('open'); document.getElementById('overlay').classList.add('open'); }
   function closeCart(){ document.getElementById('cartSheet').classList.remove('open'); document.getElementById('overlay').classList.remove('open'); }
-  function placeOrder(){ closeCart(); goTo('sending'); setTimeout(()=>{ goTo('success'); announce('✅ Order Sent! Kitchen मा पुगिसक्यो।', false); }, 1900); }
+  window.currentOrderId = null;
+  window.currentOrderNumber = null;
+  function placeOrder(){
+    const items = Object.keys(cart).map(name => ({ name, qty:cart[name].qty, price:cart[name].price }));
+    if(!items.length){ showToast('Cart खाली छ — पहिले item थप्नुहोस्।'); return; }
+    const sub = items.reduce((s,it)=>s+it.qty*it.price, 0);
+    const taxOn = document.getElementById('taxRow').style.display !== 'none';
+    const tax = taxOn ? Math.round(sub*0.13) : 0;
+    const total = sub + tax;
+    const note = document.querySelector('#cartSheet textarea')?.value || '';
+    const tableNo = (document.querySelector('#menu .tag')?.textContent.match(/Table\s*(\d+)/)||[])[1] || '04';
+
+    closeCart();
+    goTo('sending');
+
+    const orderData = {
+      table: tableNo, items, note, subtotal: sub, tax, total,
+      status: 'pending',
+      createdAt: (window.rtdbReady && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
+    };
+
+    if(window.rtdbReady){
+      ordersRef.push(orderData).then(ref => {
+        window.currentOrderId = ref.key;
+        window.currentOrderNumber = ref.key.slice(-4).toUpperCase();
+        cart = {};
+        setTimeout(()=>{
+          goTo('success');
+          document.getElementById('successOrderNo') && (document.getElementById('successOrderNo').textContent = '#'+window.currentOrderNumber);
+          announce('✅ Order Sent! Kitchen मा पुगिसक्यो।', false);
+        }, 1900);
+      }).catch(err => {
+        console.error('Order push failed:', err);
+        showToast('⚠️ Order पठाउन सकिएन — Firebase जोडिएको छैन।');
+        goTo('menu');
+      });
+    } else {
+      // fallback demo mode if Realtime DB unavailable
+      setTimeout(()=>{ goTo('success'); announce('✅ Order Sent! Kitchen मा पुगिसक्यो।', false); }, 1900);
+    }
+  }
 
   // ---- sound ----
   let notifStyle = 'beep'; // beep | voice | both
@@ -809,9 +861,19 @@
   }
 
   // cancel modal
-  function openCancelModal(){ document.getElementById('cancelModal').classList.add('open'); }
+  let rejectOrderId = null;
+  function openCancelModal(orderId){ rejectOrderId = orderId; document.getElementById('cancelModal').classList.add('open'); }
   function closeCancelModal(){ document.getElementById('cancelModal').classList.remove('open'); }
   function selReason(el){ el.parentElement.querySelectorAll('.reason-chip').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); }
+  function confirmReject(){
+    const selChip = document.querySelector('#cancelModal .reason-chip.sel');
+    const reason = selChip ? selChip.textContent : 'अरू';
+    if(rejectOrderId && window.rtdbReady){
+      ordersRef.child(rejectOrderId).update({ status:'cancelled', cancelReason: reason });
+    }
+    closeCancelModal();
+    showToast('Order Reject गरियो: ' + reason);
+  }
 
   // merge tables
   let mergeMode = false, selectedTables = [];
@@ -1116,6 +1178,123 @@
     const msg = '<div style="text-align:center; color:var(--dim); font-size:12px; padding:30px 16px; line-height:1.6;">⚠️ Firebase जोडिन सकेन।<br>यो फाइल सिधै Browser मा (file:// वा hosted URL बाट) खोल्नुहोस् — Preview/Sandbox environment मा external script block हुनसक्छ।</div>';
     const el1 = document.getElementById('customerMenuList'); if(el1) el1.innerHTML = msg;
     const el2 = document.getElementById('menuMgmtList'); if(el2) el2.innerHTML = msg;
+  }
+
+  // ===== ORDERS — Realtime Database live sync (Customer ↔ Counter ↔ Kitchen) =====
+  let allOrders = [];
+  let counterActiveTab = 'pending';
+  let kitchenActiveTab = 'accepted';
+
+  function timeAgo(ts){
+    if(!ts) return 'भर्खर';
+    const mins = Math.max(0, Math.round((Date.now()-ts)/60000));
+    return mins <= 0 ? 'भर्खर' : mins+' min ago';
+  }
+  function statusLabel(s){
+    return { pending:'Pending', accepted:'Accepted', cooking:'Cooking', ready:'Ready', served:'Served', completed:'Completed', cancelled:'Cancelled' }[s] || s;
+  }
+  function statusBadgeClass(s){
+    return { pending:'pending', accepted:'pending', cooking:'cooking', ready:'ready', served:'completed', completed:'completed', cancelled:'pending' }[s] || 'pending';
+  }
+  function itemsSummary(items){
+    return (items||[]).map(it=>`${it.name} ×${it.qty}`).join(' &nbsp;·&nbsp; ');
+  }
+  function orderTotal(o){ return o.total || o.subtotal || 0; }
+
+  function renderCounterOrders(){
+    const list = document.getElementById('counterOrderList');
+    if(!list) return;
+    const filtered = allOrders.filter(o => o.status === counterActiveTab);
+    document.getElementById('statOrders') && (document.getElementById('statOrders').textContent = allOrders.length);
+    document.getElementById('statPending') && (document.getElementById('statPending').textContent = allOrders.filter(o=>o.status==='pending').length);
+    document.getElementById('statCooking') && (document.getElementById('statCooking').textContent = allOrders.filter(o=>o.status==='cooking').length);
+    document.getElementById('statReady') && (document.getElementById('statReady').textContent = allOrders.filter(o=>o.status==='ready').length);
+    if(!filtered.length){ list.innerHTML = '<div style="text-align:center; color:var(--dim); font-size:12px; padding:30px 0;">यो category मा कुनै Order छैन।</div>'; return; }
+    list.innerHTML = filtered.map(o => `
+      <div class="order-card">
+        <div class="oc-top"><span class="oc-table">Table ${o.table}</span><span class="status-badge ${statusBadgeClass(o.status)}">${statusLabel(o.status)}</span></div>
+        <div class="oc-items">${itemsSummary(o.items)} &nbsp;·&nbsp; ${timeAgo(o.createdAt)}</div>
+        <div class="oc-bottom"><span class="oc-amt">Rs ${orderTotal(o)}</span><div class="oc-actions">
+          ${o.status==='pending' ? `<button class="btn-sm btn-reject" onclick="openCancelModal('${o.id}')">Reject</button><button class="btn-sm btn-accept" onclick="updateOrderStatus('${o.id}','accepted')">Accept</button>` : ''}
+          ${o.status!=='pending' && o.status!=='cancelled' ? `<button class="btn-sm btn-gold" onclick="goTo('tables')">View Table</button>` : ''}
+        </div></div>
+        ${document.body.classList.contains('no-kitchen') && ['accepted','cooking','ready'].includes(o.status) ? `
+        <div class="oc-kitchen-actions" style="display:flex;">
+          ${o.status==='accepted' ? `<button class="btn-sm btn-gold" onclick="updateOrderStatus('${o.id}','cooking')">🍳 Start Cooking</button>` : ''}
+          ${o.status==='cooking' ? `<button class="btn-sm" style="background:var(--purple); color:#fff;" onclick="updateOrderStatus('${o.id}','ready')">Ready</button>` : ''}
+          ${o.status==='ready' ? `<button class="btn-sm" style="background:var(--green); color:#0a0a0a;" onclick="updateOrderStatus('${o.id}','served')">Served</button>` : ''}
+        </div>` : ''}
+      </div>`).join('');
+  }
+
+  function renderKitchenOrders(){
+    const list = document.getElementById('kitchenOrderList');
+    if(!list) return;
+    const filtered = allOrders.filter(o => o.status === kitchenActiveTab);
+    const activeCount = allOrders.filter(o => ['accepted','cooking','ready'].includes(o.status)).length;
+    document.getElementById('kitchenTicketCount') && (document.getElementById('kitchenTicketCount').textContent = activeCount + ' active tickets');
+    if(!filtered.length){ list.innerHTML = '<div style="text-align:center; color:var(--dim); font-size:12px; padding:30px 0;">यो category मा कुनै ticket छैन।</div>'; return; }
+    list.innerHTML = filtered.map(o => {
+      let btn = '';
+      if(o.status==='accepted') btn = `<button class="btn-sm btn-gold" onclick="updateOrderStatus('${o.id}','cooking')">Start Cooking</button>`;
+      else if(o.status==='cooking') btn = `<button class="btn-sm" style="background:var(--purple); color:#fff;" onclick="updateOrderStatus('${o.id}','ready')">Mark Ready</button>`;
+      else if(o.status==='ready') btn = `<button class="btn-sm" style="background:var(--green); color:#0a0a0a;" onclick="updateOrderStatus('${o.id}','served')">Served</button>`;
+      return `<div class="order-card">
+        <div class="oc-top"><span class="oc-table">Table ${o.table}</span><span class="status-badge ${statusBadgeClass(o.status)}">${statusLabel(o.status)}</span></div>
+        <div class="oc-items">${(o.items||[]).map(it=>it.name+' ×'+it.qty).join('<br>')}${o.note ? `<br><i style="color:var(--orange)">Note: ${o.note}</i>` : ''}</div>
+        <div class="oc-bottom"><span style="font-size:11px; color:var(--dim);">${timeAgo(o.createdAt)}</span>${btn}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function updateOrderStatus(orderId, newStatus){
+    if(!window.rtdbReady) return;
+    ordersRef.child(orderId).update({ status: newStatus });
+  }
+
+  if(window.rtdbReady){
+    try {
+      ordersRef.on('value', snapshot => {
+        const val = snapshot.val() || {};
+        allOrders = Object.keys(val).map(id => ({ id, ...val[id] })).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
+        renderCounterOrders();
+        renderKitchenOrders();
+        // live tracking screen update for customer's current order
+        if(window.currentOrderId){
+          const mine = allOrders.find(o => o.id === window.currentOrderId);
+          if(mine) updateTrackingFromStatus(mine.status);
+        }
+      }, err => console.error('Orders sync error:', err));
+    } catch(e){ console.error('Orders listener failed:', e); }
+  }
+
+  document.addEventListener('click', e => {
+    const tab = e.target.closest('#counterTabs .tab');
+    if(tab){
+      document.querySelectorAll('#counterTabs .tab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      counterActiveTab = tab.dataset.status;
+      renderCounterOrders();
+    }
+    const ktab = e.target.closest('#kitchenTabs .tab');
+    if(ktab){
+      document.querySelectorAll('#kitchenTabs .tab').forEach(t=>t.classList.remove('active'));
+      ktab.classList.add('active');
+      kitchenActiveTab = ktab.dataset.status;
+      renderKitchenOrders();
+    }
+  });
+
+  const statusStepMap = { pending:0, accepted:1, cooking:2, ready:3, served:4, completed:4 };
+  function updateTrackingFromStatus(status){
+    const step = statusStepMap[status];
+    if(step === undefined) return;
+    if(step === trackStep) return;
+    while(trackStep < step){
+      trackStep++;
+      updateTrackUI();
+    }
+    announce(trackMsgs[trackStep], true);
   }
 
   function priceAdj(id, delta, currentPrice){
