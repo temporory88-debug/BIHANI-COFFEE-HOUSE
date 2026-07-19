@@ -526,7 +526,6 @@
 
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
@@ -556,22 +555,14 @@
     appId: "1:175493614771:web:ce06c0453730cf929574c6",
     measurementId: "G-2DNHWRTM8Q"
   };
-  window.firebaseReady = false;
   window.rtdbReady = false;
-  let db, menuCol, rtdb, ordersRef, tablesRef;
+  let rtdb, ordersRef, tablesRef, menuRef;
   try {
     firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    menuCol = db.collection('menu');
-    window.firebaseReady = true;
-  } catch(e) {
-    console.error('Firebase init failed:', e);
-    window.firebaseReady = false;
-  }
-  try {
     rtdb = firebase.database();
     ordersRef = rtdb.ref('orders');
     tablesRef = rtdb.ref('tables');
+    menuRef = rtdb.ref('menu');
     window.rtdbReady = true;
   } catch(e) {
     console.error('Realtime Database init failed:', e);
@@ -1098,30 +1089,19 @@
     {name:'Special Pizza', price:500, category:'Best Sellers', veg:false, desc:'', available:true, bestSeller:true, emoji:'⭐'}
   ];
   async function seedMenuIfEmpty(){
-    const snap = await menuCol.limit(1).get();
-    if(!snap.empty) return;
-    const chunks = [];
-    for(let i=0;i<fullMenuSeed.length;i+=450) chunks.push(fullMenuSeed.slice(i,i+450));
-    for(const chunk of chunks){
-      const batch = db.batch();
-      chunk.forEach(item => batch.set(menuCol.doc(), item));
-      await batch.commit();
-    }
+    const snap = await menuRef.limitToFirst(1).once('value');
+    if(snap.exists()) return;
+    const updates = {};
+    fullMenuSeed.forEach(item => { const key = menuRef.push().key; updates[key] = item; });
+    await menuRef.update(updates);
   }
   async function resetToFullMenu(){
     if(!confirm('पुरानो सबै Menu Item मेटेर नयाँ पूरा Menu (९०+ item) load गर्ने हो?')) return;
     showToast('🔄 Menu Reset हुँदैछ...');
-    const snap = await menuCol.get();
-    const delBatch = db.batch();
-    snap.docs.forEach(d => delBatch.delete(d.ref));
-    await delBatch.commit();
-    const chunks = [];
-    for(let i=0;i<fullMenuSeed.length;i+=450) chunks.push(fullMenuSeed.slice(i,i+450));
-    for(const chunk of chunks){
-      const batch = db.batch();
-      chunk.forEach(item => batch.set(menuCol.doc(), item));
-      await batch.commit();
-    }
+    await menuRef.remove();
+    const updates = {};
+    fullMenuSeed.forEach(item => { const key = menuRef.push().key; updates[key] = item; });
+    await menuRef.update(updates);
     showToast('✅ पूरा Menu (९०+ item) Load भयो।');
   }
 
@@ -1155,15 +1135,16 @@
       </div></div>`).join('');
   }
 
-  if(window.firebaseReady){
+  if(window.rtdbReady){
     try {
-      menuCol.onSnapshot(snapshot => {
-        const items = snapshot.docs.map(d => ({ id:d.id, ...d.data() }));
+      menuRef.on('value', snapshot => {
+        const val = snapshot.val() || {};
+        const items = Object.keys(val).map(id => ({ id, ...val[id] }));
         items.sort((a,b) => (a.name||'').localeCompare(b.name||''));
         if(document.getElementById('menuMgmtList')) renderMenuMgmt(items);
         renderCustomerMenu(items);
       }, err => {
-        console.error('Firestore error:', err);
+        console.error('Realtime DB menu error:', err);
         showFirebaseUnavailable();
       });
       seedMenuIfEmpty();
@@ -1175,7 +1156,7 @@
     showFirebaseUnavailable();
   }
   function showFirebaseUnavailable(){
-    const msg = '<div style="text-align:center; color:var(--dim); font-size:12px; padding:30px 16px; line-height:1.6;">⚠️ Firebase जोडिन सकेन।<br>यो फाइल सिधै Browser मा (file:// वा hosted URL बाट) खोल्नुहोस् — Preview/Sandbox environment मा external script block हुनसक्छ।</div>';
+    const msg = '<div style="text-align:center; color:var(--dim); font-size:12px; padding:30px 16px; line-height:1.6;">⚠️ Firebase जोडिन सकेन।<br>Realtime Database URL/Rules जाँच्नुहोस्, वा यो फाइल Browser मा (file:// वा hosted URL बाट) सिधै खोल्नुहोस्।</div>';
     const el1 = document.getElementById('customerMenuList'); if(el1) el1.innerHTML = msg;
     const el2 = document.getElementById('menuMgmtList'); if(el2) el2.innerHTML = msg;
   }
@@ -1299,13 +1280,13 @@
 
   function priceAdj(id, delta, currentPrice){
     const newVal = Math.max(0, currentPrice + delta);
-    menuCol.doc(id).update({ price: newVal });
+    menuRef.child(id).update({ price: newVal });
   }
   function toggleAvailable(id, newVal){
-    menuCol.doc(id).update({ available: newVal });
+    menuRef.child(id).update({ available: newVal });
   }
   function toggleBestSeller(id, newVal){
-    menuCol.doc(id).update({ bestSeller: newVal });
+    menuRef.child(id).update({ bestSeller: newVal });
     showToast(newVal ? '⭐ Best Seller mark गरियो' : 'Best Seller हटाइयो');
   }
   function openAddItemModal(){ document.getElementById('addItemModal').classList.add('open'); }
@@ -1317,7 +1298,7 @@
     const desc = document.getElementById('newItemDesc').value || '';
     const veg = document.querySelector('#addItemModal .split-opt.active').textContent.includes('Veg') && !document.querySelector('#addItemModal .split-opt.active').textContent.includes('Non');
     if(!name){ showToast('कृपया Item नाम राख्नुहोस्।'); return; }
-    await menuCol.add({ name, price, category, veg, desc, available:true, bestSeller:false, emoji:'🍽️' });
+    await menuRef.push({ name, price, category, veg, desc, available:true, bestSeller:false, emoji:'🍽️' });
     document.getElementById('addItemModal').classList.remove('open');
     document.getElementById('newItemName').value=''; document.getElementById('newItemPrice').value=''; document.getElementById('newItemCat').value=''; document.getElementById('newItemDesc').value='';
     showToast(`✅ "${name}" Menu मा थपियो।`);
@@ -1332,13 +1313,13 @@
   function saveEditItem(){
     const newName = document.getElementById('editItemName').value;
     const newDesc = document.getElementById('editItemDesc').value;
-    if(editingItemId) menuCol.doc(editingItemId).update({ name:newName, desc:newDesc });
+    if(editingItemId) menuRef.child(editingItemId).update({ name:newName, desc:newDesc });
     document.getElementById('editItemModal').classList.remove('open');
     showToast('✏️ Item अपडेट भयो।');
   }
   function deleteMenuItem(id, name){
     if(confirm(`"${name}" लाई पूरै Menu बाट हटाउने हो?`)){
-      menuCol.doc(id).delete();
+      menuRef.child(id).remove();
       showToast(`🗑 "${name}" Menu बाट हटाइयो।`);
     }
   }
