@@ -310,12 +310,13 @@ const firebaseConfig = {
   measurementId: "G-2DNHWRTM8Q"
 };
 window.rtdbReady = false;
-let rtdb, ordersRef, menuRef;
+let rtdb, ordersRef, menuRef, waiterRef;
 try {
   firebase.initializeApp(firebaseConfig);
   rtdb = firebase.database();
   ordersRef = rtdb.ref('orders');
   menuRef = rtdb.ref('menu');
+  waiterRef = rtdb.ref('waiterCalls');
   window.rtdbReady = true;
 } catch(e) {
   console.error('Firebase init failed:', e);
@@ -751,7 +752,22 @@ function go(id){
 
 function openWaiter(){ document.getElementById('cwOverlay').classList.add('open'); document.getElementById('cwSheet').classList.add('open'); }
 function closeWaiter(){ document.getElementById('cwOverlay').classList.remove('open'); document.getElementById('cwSheet').classList.remove('open'); }
-function sendWaiter(msg){ closeWaiter(); toast('🔔 '+msg+' — Table '+tableNo+' · Staff notified'); }
+function sendWaiter(msg){
+  closeWaiter();
+  if(window.rtdbReady && waiterRef){
+    waiterRef.push({
+      table: String(tableNo), message: msg, resolved: false,
+      createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
+    }).then(()=>{
+      toast('🔔 '+msg+' — Table '+tableNo+' · Staff notified');
+    }).catch(err=>{
+      console.error('Waiter call failed:', err);
+      toast('⚠️ Notification पठाउन सकिएन — फेरि प्रयास गर्नुहोस्।');
+    });
+  } else {
+    toast('⚠️ Firebase जोडिएको छैन — Notification पठाउन सकिएन।');
+  }
+}
 
 let toastTimer;
 function toast(msg){
