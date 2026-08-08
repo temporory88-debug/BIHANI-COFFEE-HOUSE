@@ -73,6 +73,7 @@ body{
 
 .float-cart{position:fixed;left:50%;transform:translateX(-50%) translateY(130%);width:calc(100% - 32px);max-width:398px;bottom:76px;background:linear-gradient(120deg,var(--gold),var(--gold2));color:#141210;border-radius:14px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 10px 24px rgba(201,168,76,.35);z-index:50;transition:transform .35s cubic-bezier(.2,.9,.3,1.2);cursor:pointer}
 .float-cart.show{transform:translateX(-50%) translateY(0)}
+#splash.active ~ .float-cart{display:none !important}
 .fc-left{display:flex;align-items:center;gap:9px}
 .fc-badge{background:#141210;color:var(--gold2);font-size:11px;font-weight:700;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center}
 .fc-txt{font-size:13px;font-weight:700}.fc-price{font-weight:800;font-size:14px}
