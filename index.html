@@ -515,7 +515,7 @@ function placeOrder(){
   ordersRef.push(orderData).then(ref=>{
     cart = {};
     document.getElementById('orderNote').value='';
-    renderCart();
+    renderCart(); filterMenu();
     setTimeout(()=>{
       go('orders');
       toast('✅ Order Kitchen मा पठाइयो');
@@ -584,7 +584,8 @@ function buildTrackHtml(status){
 
 function renderMyOrder(){
   const box = document.getElementById('orderContent');
-  const list = myOrders;
+  const allPaid = myOrders.length && myOrders.every(o=>o.paid);
+  const list = allPaid ? [] : myOrders; // once the table's bill is fully paid, treat as a fresh session
   if(!list.length){
     box.innerHTML = `<div class="empty-order">
       <div class="big">📋</div>
@@ -746,7 +747,7 @@ function go(id){
   const nav = document.getElementById('bottomNav');
   if(id==='splash'||id==='sending') nav.style.display='none'; else nav.style.display='flex';
   document.querySelectorAll('.nav-item[data-tab]').forEach(n=>n.classList.remove('active'));
-  if(id==='menu') document.querySelector('.nav-item[data-tab="menu"]')?.classList.add('active');
+  if(id==='menu'){ document.querySelector('.nav-item[data-tab="menu"]')?.classList.add('active'); filterMenu(); }
   if(id==='orders'){ document.querySelector('.nav-item[data-tab="orders"]')?.classList.add('active'); renderMyOrder(); }
   if(id==='bill'||id==='receipt'){ document.querySelector('.nav-item[data-tab="bill"]')?.classList.add('active'); if(id==='bill') renderBill(); }
 }
