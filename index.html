@@ -645,27 +645,16 @@ function renderMyOrder(){
 
 function renderBill(){
   const box = document.getElementById('billContent');
-  const unpaid = myOrders.filter(x=>!x.paid);
   const allPaid = myOrders.length && myOrders.every(x=>x.paid);
+  const activeOrders = allPaid ? [] : myOrders; // once fully paid, this table's session is treated as fresh
+  const unpaid = activeOrders.filter(x=>!x.paid);
 
-  if(!myOrders.length){
+  if(!activeOrders.length){
     box.innerHTML = `<div class="empty-order">
       <div class="big">🧾</div>
       <p>अहिले कुनै bill छैन।<br>पहिले order गर्नुहोस्।</p>
       <button class="btn-gold" onclick="go('menu')">Menu हेर्नुहोस्</button>
     </div>`;
-    return;
-  }
-  if(allPaid){
-    box.innerHTML = `
-      <div class="paid-stamp">
-        <div class="big">✅</div>
-        <h3>Payment Complete</h3>
-        <p>${myOrders.length} order(s) · Rs ${myOrders.reduce((s,o)=>s+(o.netTotal||o.total||0),0)}</p>
-      </div>
-      <div style="padding:0 16px">
-        <button class="btn-outline" style="width:100%" onclick="renderReceipt();go('receipt')">Receipt हेर्नुहोस्</button>
-      </div>`;
     return;
   }
 
