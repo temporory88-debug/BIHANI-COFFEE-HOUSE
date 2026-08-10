@@ -476,7 +476,14 @@ function renderMenu(items, grouped){
   if(grouped){
     const groups = {};
     items.forEach(it=>{ const c=it.category||'General'; (groups[c]=groups[c]||[]).push(it); });
-    const catNames = Object.keys(groups).sort();
+    const catNames = Object.keys(groups).sort((a,b)=>{
+      const al = a.toLowerCase(), bl = b.toLowerCase();
+      if(al==='today special') return -1;
+      if(bl==='today special') return 1;
+      if(al==='add-on') return 1;
+      if(bl==='add-on') return -1;
+      return a.localeCompare(b);
+    });
     list.innerHTML = catNames.map(cat=>`
       <div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>
       ${groups[cat].map(itemCardHtml).join('')}
@@ -634,10 +641,11 @@ function buildTrackHtml(status){
   const normalized = String(status||'').trim().toLowerCase();
   let stepIdx = steps.indexOf(normalized === 'completed' ? 'served' : normalized);
   if(stepIdx === -1) stepIdx = 0; // unrecognized status — still show step 1 as active instead of no color at all
+  const isFinalStep = stepIdx === steps.length - 1; // 'served' — nothing left pending, so mark it done (checkmark) not active (gold)
   let html = '<div class="track-mini">';
   steps.forEach((s,i)=>{
-    const done = i < stepIdx;
-    const active = i === stepIdx;
+    const done = i < stepIdx || (isFinalStep && i === stepIdx);
+    const active = i === stepIdx && !isFinalStep;
     html += `<div class="tm-step">
       ${i>0?`<div class="tm-line ${i<=stepIdx?'done':''}"></div>`:''}
       <div class="tm-dot ${done?'done':''} ${active?'active':''}">${done?'✓':(i+1)}</div>
