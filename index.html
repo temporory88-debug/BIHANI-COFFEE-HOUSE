@@ -397,6 +397,15 @@ const params = new URLSearchParams(location.search);
 tableNo = params.get('table') || '04';
 document.getElementById('tableTag').textContent = `Table ${tableNo} · Dine In`;
 document.getElementById('orderTableTag').textContent = `Table ${tableNo}`;
+// Table numbers must compare equal no matter how they were written — this
+// QR link may pass a zero-padded number ("04") while the staff app writes
+// and compares plain numbers ("4"). That mismatch was the real cause of
+// orders "disappearing": an order placed here for Table 4 (as "04") never
+// matched the staff app's Table Grid/Detail/Billing screens, which compare
+// against "4". Every write/comparison against Firebase below uses this
+// normalized form; on-screen labels still show the original tableNo so the
+// customer sees whatever their QR code said (e.g. "Table 04").
+function normTable(t){ return String(t==null?'':t).trim().replace(/^0+(?=\d)/,''); }
 
 setTimeout(()=>{ go('menu'); document.getElementById('bottomNav').style.display='flex'; }, 2000);
 
@@ -434,6 +443,10 @@ function setCat(el){
   if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__'){
     const header = [...document.querySelectorAll('.menu-section-header')].find(h=>h.dataset.sectionCat===cat);
     if(header){ header.scrollIntoView({behavior:'smooth', block:'start'}); return; }
+  }
+  if(cat==='__all__'){
+    const searchBox = document.getElementById('search');
+    if(searchBox) searchBox.value = ''; // tapping "सबै" always shows everything — clear any leftover search text too
   }
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
@@ -560,7 +573,7 @@ function placeOrder(){
   const note = document.getElementById('orderNote').value.trim();
 
   const orderData = {
-    table: String(tableNo), items, note, subtotal: sub, tax, service:0, total,
+    table: normTable(tableNo), items, note, subtotal: sub, tax, service:0, total,
     status: 'pending', paid:false,
     createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
   };
@@ -587,7 +600,7 @@ if(window.rtdbReady){
   ordersRef.on('value', snapshot=>{
     const val = snapshot.val() || {};
     const all = Object.keys(val).map(id=>({id, ...val[id]}));
-    myOrders = all.filter(o=>o.table===String(tableNo)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    myOrders = all.filter(o=>normTable(o.table)===normTable(tableNo)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 
     myOrders.forEach(o=>{
       const prev = previousStatusMap[o.id];
@@ -657,8 +670,12 @@ function buildTrackHtml(status){
 
 function renderMyOrder(){
   const box = document.getElementById('orderContent');
-  const allPaid = myOrders.length && myOrders.every(o=>o.paid);
-  const list = allPaid ? [] : myOrders; // once the table's bill is fully paid, treat as a fresh session
+  // Billing is "done" for the table once every order is status:'completed' —
+  // not necessarily paid:true (a Baki/credit bill is completed by staff but
+  // stays paid:false until the tab is settled). Using paid alone meant a
+  // Baki bill kept showing on this screen forever instead of resetting.
+  const allDone = myOrders.length && myOrders.every(o=>o.status==='completed');
+  const list = allDone ? [] : myOrders; // once the table's bill is fully settled, treat as a fresh session
   if(!list.length){
     box.innerHTML = `<div class="empty-order">
       <div class="big">📋</div>
@@ -718,8 +735,8 @@ function renderMyOrder(){
 
 function renderBill(){
   const box = document.getElementById('billContent');
-  const allPaid = myOrders.length && myOrders.every(x=>x.paid);
-  const activeOrders = allPaid ? [] : myOrders; // once fully paid, this table's session is treated as fresh
+  const allDone = myOrders.length && myOrders.every(x=>x.status==='completed');
+  const activeOrders = allDone ? [] : myOrders; // once fully settled, this table's session is treated as fresh
   const unpaid = activeOrders.filter(x=>!x.paid);
 
   if(!activeOrders.length){
@@ -820,7 +837,7 @@ function sendWaiter(msg){
   closeWaiter();
   if(window.rtdbReady && waiterRef){
     waiterRef.push({
-      table: String(tableNo), message: msg, resolved: false,
+      table: normTable(tableNo), message: msg, resolved: false,
       createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
     }).then(()=>{
       toast('🔔 '+msg+' — Table '+tableNo+' · Staff notified');
