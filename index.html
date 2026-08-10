@@ -380,7 +380,7 @@ function speakStatus(status){
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function categoryIcon(cat){
-  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Best Sellers':'⭐' };
+  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Today Special':'⭐' };
   return map[cat] || '🍽️';
 }
 
@@ -408,7 +408,12 @@ if(window.rtdbReady){
     menuRef.on('value', snapshot => {
       const val = snapshot.val() || {};
       liveMenu = Object.keys(val).map(id => ({ id, ...val[id] })).filter(it=>it.available);
-      allCategories = [...new Set(liveMenu.map(it=>it.category).filter(c=>c && c.toLowerCase()!=='best sellers'))].sort();
+      allCategories = [...new Set(liveMenu.map(it=>it.category).filter(c=>c && c.toLowerCase()!=='today special'))]
+        .sort((a,b)=>{
+          if(a.toLowerCase()==='add-on') return 1;
+          if(b.toLowerCase()==='add-on') return -1;
+          return a.localeCompare(b);
+        });
       renderChips();
       filterMenu();
     }, err => { console.error('Menu error:', err); showFirebaseUnavailable(); });
@@ -420,7 +425,7 @@ if(window.rtdbReady){
 function renderChips(){
   const hasBest = liveMenu.some(it=>it.bestSeller);
   let html = `<div class="chip ${selectedCat==='__all__'?'active':''}" data-cat="__all__" onclick="setCat(this)">सबै</div>`;
-  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">★ Best</div>`;
+  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">🌟 Today Special</div>`;
   allCategories.forEach(c=>{ html += `<div class="chip ${selectedCat===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCat(this)">${categoryIcon(c)} ${escapeHtml(c)}</div>`; });
   document.getElementById('chips').innerHTML = html;
 }
@@ -626,7 +631,9 @@ function fmtDateTime(d){ if(!d) return ''; return new Date(d).toLocaleString('en
 function buildTrackHtml(status){
   const steps = ['pending','accepted','cooking','ready','served'];
   const labels = ['Sent','Accept','Cook','Ready','Served'];
-  const stepIdx = steps.indexOf(status === 'completed' ? 'served' : status);
+  const normalized = String(status||'').trim().toLowerCase();
+  let stepIdx = steps.indexOf(normalized === 'completed' ? 'served' : normalized);
+  if(stepIdx === -1) stepIdx = 0; // unrecognized status — still show step 1 as active instead of no color at all
   let html = '<div class="track-mini">';
   steps.forEach((s,i)=>{
     const done = i < stepIdx;
