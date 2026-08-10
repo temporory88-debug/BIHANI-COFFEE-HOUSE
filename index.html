@@ -280,4 +280,552 @@ body{
   </div>
 </div>
 
-<div class="over
+<div class="overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="sheet" id="cartSheet">
+  <div class="handle"></div>
+  <div class="sheet-head">
+    <div class="sheet-title cinzel">Your Order</div>
+    <div class="sheet-close" onclick="closeCart()">Close ✕</div>
+  </div>
+  <div class="sheet-body" id="cartBody"></div>
+  <div class="note-box"><label>Special Note</label><textarea id="orderNote" placeholder="e.g. Less spicy, extra chutney..."></textarea></div>
+  <div class="sheet-foot">
+    <div class="sum-row"><span>Subtotal</span><span id="sSub">Rs 0</span></div>
+    <div class="sum-row"><span>Service / Tax (13%)</span><span id="sTax">Rs 0</span></div>
+    <div class="sum-row total"><span>Grand Total</span><span id="sTot" style="color:var(--gold2)">Rs 0</span></div>
+    <button class="place-btn" id="placeBtn" onclick="placeOrder()"><span>पठाउनुहोस् · Place Order</span><span id="sBtn">Rs 0 →</span></button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyB-egkmW0c1s0HnttLBhpuuXljGcrWyRjQ",
+  authDomain: "bihani-coffee-house.firebaseapp.com",
+  databaseURL: "https://bihani-coffee-house-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "bihani-coffee-house",
+  storageBucket: "bihani-coffee-house.firebasestorage.app",
+  messagingSenderId: "175493614771",
+  appId: "1:175493614771:web:ce06c0453730cf929574c6",
+  measurementId: "G-2DNHWRTM8Q"
+};
+window.rtdbReady = false;
+let rtdb, ordersRef, menuRef, waiterRef;
+try {
+  firebase.initializeApp(firebaseConfig);
+  rtdb = firebase.database();
+  ordersRef = rtdb.ref('orders');
+  menuRef = rtdb.ref('menu');
+  waiterRef = rtdb.ref('waiterCalls');
+  window.rtdbReady = true;
+} catch(e) {
+  console.error('Firebase init failed:', e);
+}
+
+const CAFE = { name: 'Bihani Coffee House', address: 'Bhojpur-7, Bank Road', phone: '9860293236 / 9817360844' };
+const STATUS_LABEL = {pending:'Pending',accepted:'Accepted',cooking:'Cooking',ready:'Ready',served:'Served',completed:'Paid'};
+const STATUS_CLASS = {pending:'sb-pending',accepted:'sb-accepted',cooking:'sb-cooking',ready:'sb-ready',served:'sb-served',completed:'sb-paid'};
+const STATUS_MSG = {
+  pending: 'Order kitchen मा पठाइयो — accept हुन पर्खँदै',
+  accepted: 'Kitchen ले order accept गर्‍यो',
+  cooking: 'खाना पकाइँदै छ...',
+  ready: 'तयार! चाँडै table मा आउँछ',
+  served: 'Serve भयो — मीठो खानुहोस्! Enjoy your meal 🍽️',
+  completed: 'भुक्तानी पूरा भयो — धन्यवाद! फेरि आउनुहोस् 🙏'
+};
+// Spoken (TTS) versions — bilingual, chosen via the language toggle on the My Order screen
+const STATUS_SPOKEN = {
+  ne: {
+    pending: 'तपाईंले पठाउनुभएको अर्डर काउन्टरमा पुग्यो',
+    accepted: 'तपाईंले अर्डर गर्नुभएको काउन्टरमा Accept भएको छ',
+    cooking: 'तपाईंको खाना पकाउन थालिएको छ',
+    ready: 'तपाईंको अर्डर तयार भयो, चाँडै टेबलमा आउनेछ',
+    served: 'तपाईंको अर्डर टेबलमा पुग्यो, मीठो खानुहोस्',
+    completed: 'भुक्तानी पूरा भयो, धन्यवाद! फेरि पनि आउनुहोस्'
+  },
+  en: {
+    pending: 'Your order has reached the counter',
+    accepted: 'Your order has been accepted at the counter',
+    cooking: 'Your food is being cooked',
+    ready: 'Your order is ready, it will reach your table soon',
+    served: 'Your order has been served, enjoy your meal',
+    completed: 'Payment complete, thank you! Please visit again'
+  }
+};
+let trackVoiceLang = 'ne'; // updated live from settings/customerVoiceLang (controlled from the staff app)
+let customerNotifStyle = 'both'; // beep | voice | both — updated live from settings/customerNotifStyle
+let customerNotifStages = {}; // per-stage on/off — updated live from settings/customerNotifStages
+if(window.rtdbReady){
+  rtdb.ref('settings/customerVoiceLang').on('value', snap => {
+    trackVoiceLang = (snap.val() === 'en') ? 'en' : 'ne';
+  });
+  rtdb.ref('settings/customerNotifStyle').on('value', snap => {
+    customerNotifStyle = snap.val() || 'both';
+  });
+  rtdb.ref('settings/customerNotifStages').on('value', snap => {
+    customerNotifStages = snap.val() || {};
+  });
+}
+function stageEnabled(status){ return customerNotifStages[status] !== false; } // default on if never set by staff
+function speakStatus(status){
+  try{
+    const text = (STATUS_SPOKEN[trackVoiceLang] || STATUS_SPOKEN.ne)[status];
+    if(!text) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = trackVoiceLang === 'en' ? 'en-US' : 'ne-NP';
+    u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function categoryIcon(cat){
+  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Best Sellers':'⭐' };
+  return map[cat] || '🍽️';
+}
+
+let cart = {};
+let scrollObserver = null;
+let liveMenu = [];
+let allCategories = [];
+let selectedCat = '__all__';
+let tableNo = '04';
+let myOrders = [];
+let previousStatusMap = {};
+
+const params = new URLSearchParams(location.search);
+tableNo = params.get('table') || '04';
+document.getElementById('tableTag').textContent = `Table ${tableNo} · Dine In`;
+document.getElementById('orderTableTag').textContent = `Table ${tableNo}`;
+
+setTimeout(()=>{ go('menu'); document.getElementById('bottomNav').style.display='flex'; }, 2000);
+
+function showFirebaseUnavailable(){
+  document.getElementById('menuList').innerHTML = '<div style="text-align:center;color:var(--dim);padding:40px 16px;font-size:12px;line-height:1.6">⚠️ Firebase जोडिन सकेन।<br>यो फाइल hosted URL बाट खोल्नुहोस्।</div>';
+}
+if(window.rtdbReady){
+  try {
+    menuRef.on('value', snapshot => {
+      const val = snapshot.val() || {};
+      liveMenu = Object.keys(val).map(id => ({ id, ...val[id] })).filter(it=>it.available);
+      allCategories = [...new Set(liveMenu.map(it=>it.category).filter(c=>c && c.toLowerCase()!=='best sellers'))].sort();
+      renderChips();
+      filterMenu();
+    }, err => { console.error('Menu error:', err); showFirebaseUnavailable(); });
+  } catch(e){ showFirebaseUnavailable(); }
+} else {
+  showFirebaseUnavailable();
+}
+
+function renderChips(){
+  const hasBest = liveMenu.some(it=>it.bestSeller);
+  let html = `<div class="chip ${selectedCat==='__all__'?'active':''}" data-cat="__all__" onclick="setCat(this)">सबै</div>`;
+  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">★ Best</div>`;
+  allCategories.forEach(c=>{ html += `<div class="chip ${selectedCat===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCat(this)">${categoryIcon(c)} ${escapeHtml(c)}</div>`; });
+  document.getElementById('chips').innerHTML = html;
+}
+function setCat(el){
+  const cat = el.dataset.cat;
+  if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__'){
+    const header = [...document.querySelectorAll('.menu-section-header')].find(h=>h.dataset.sectionCat===cat);
+    if(header){ header.scrollIntoView({behavior:'smooth', block:'start'}); return; }
+  }
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  selectedCat = cat;
+  filterMenu();
+}
+
+function filterMenu(){
+  const q = (document.getElementById('search').value||'').toLowerCase().trim();
+  let items = liveMenu.slice();
+  if(selectedCat==='__best__') items = items.filter(i=>i.bestSeller);
+  else if(selectedCat!=='__all__') items = items.filter(i=>i.category===selectedCat);
+  if(q) items = items.filter(i=>(i.name||'').toLowerCase().includes(q)||(i.category||'').toLowerCase().includes(q));
+  renderMenu(items, !q && selectedCat==='__all__');
+}
+
+function itemCardHtml(it){
+  const inCart = cart[it.name];
+  return `<div class="item-card">
+    <div class="item-thumb">${it.emoji||categoryIcon(it.category)}</div>
+    <div class="item-info">
+      <div class="item-top"><div class="item-name">${escapeHtml(it.name)}</div><div class="veg ${it.veg?'v':'n'}">${it.veg?'Veg':'Non-Veg'}</div></div>
+      <div class="item-desc">${escapeHtml(it.category||'')}</div>
+      <div class="item-bottom">
+        <div class="item-price">Rs ${it.price}</div>
+        <button class="add-btn" style="${inCart?'display:none':''}" onclick="addItem('${it.id}')">+ ADD</button>
+        <div class="qty-stepper ${inCart?'show':''}">
+          <button onclick="chgQty('${it.id}',-1)">−</button>
+          <span>${inCart?inCart.qty:1}</span>
+          <button onclick="chgQty('${it.id}',1)">+</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderMenu(items, grouped){
+  const list = document.getElementById('menuList');
+  if(!items.length){ list.innerHTML='<div style="text-align:center;color:var(--dim);padding:40px 0;font-size:13px">कुनै item भेटिएन</div>'; return; }
+  if(grouped){
+    const groups = {};
+    items.forEach(it=>{ const c=it.category||'General'; (groups[c]=groups[c]||[]).push(it); });
+    const catNames = Object.keys(groups).sort();
+    list.innerHTML = catNames.map(cat=>`
+      <div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>
+      ${groups[cat].map(itemCardHtml).join('')}
+    `).join('');
+    setupScrollSpy();
+  } else {
+    list.innerHTML = items.map(itemCardHtml).join('');
+  }
+}
+
+function setupScrollSpy(){
+  if(scrollObserver) scrollObserver.disconnect();
+  const headers = document.querySelectorAll('.menu-section-header');
+  if(!headers.length || !('IntersectionObserver' in window)) return;
+  scrollObserver = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const cat = entry.target.dataset.sectionCat;
+        document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', c.dataset.cat===cat));
+      }
+    });
+  }, { rootMargin:'-140px 0px -70% 0px', threshold:0 });
+  headers.forEach(h=>scrollObserver.observe(h));
+}
+
+function findMenuItem(id){ return liveMenu.find(it=>it.id===id); }
+function addItem(id){
+  const it = findMenuItem(id); if(!it) return;
+  cart[it.name] = { qty:1, price:it.price, id };
+  renderCart(); filterMenu();
+}
+function chgQty(id, dir){
+  const it = findMenuItem(id); if(!it) return;
+  if(!cart[it.name]) return;
+  cart[it.name].qty += dir;
+  if(cart[it.name].qty<=0) delete cart[it.name];
+  renderCart(); filterMenu();
+}
+function renderCart(){
+  let count=0, sub=0, body='';
+  for(const name in cart){
+    const {qty,price}=cart[name];
+    count+=qty; sub+=qty*price;
+    body+=`<div class="cart-line">
+      <div><div class="cl-name">${escapeHtml(name)}</div><div class="cl-sub">Rs ${price} × ${qty}</div></div>
+      <div class="cl-mid">Rs ${qty*price}</div>
+      <div class="cl-step">
+        <button onclick="chgQty('${cart[name].id}',-1)">−</button>
+        <span>${qty}</span>
+        <button onclick="chgQty('${cart[name].id}',1)">+</button>
+      </div>
+    </div>`;
+  }
+  document.getElementById('cartBody').innerHTML = body || '<div style="text-align:center;color:var(--dim);padding:28px 0;font-size:13px">Cart खाली छ — Menu बाट item थप्नुहोस्</div>';
+  const tax=Math.round(sub*0.13), tot=sub+tax;
+  document.getElementById('fcCount').textContent=count;
+  document.getElementById('fcPrice').textContent='Rs '+sub;
+  document.getElementById('sSub').textContent='Rs '+sub;
+  document.getElementById('sTax').textContent='Rs '+tax;
+  document.getElementById('sTot').textContent='Rs '+tot;
+  document.getElementById('sBtn').textContent='Rs '+tot+' →';
+  document.getElementById('floatCart').classList.toggle('show', count>0);
+}
+function openCart(){ document.getElementById('cartOverlay').classList.add('open'); document.getElementById('cartSheet').classList.add('open'); }
+function closeCart(){ document.getElementById('cartOverlay').classList.remove('open'); document.getElementById('cartSheet').classList.remove('open'); }
+
+function placeOrder(){
+  const items = Object.keys(cart).map(n=>({name:n,qty:cart[n].qty,price:cart[n].price}));
+  if(!items.length){ toast('Cart खाली छ'); return; }
+  if(!window.rtdbReady){ toast('⚠️ Firebase जोडिएको छैन — Order पठाउन सकिएन।'); return; }
+  const sub = items.reduce((s,i)=>s+i.qty*i.price,0);
+  const tax = Math.round(sub*0.13);
+  const total = sub+tax;
+  const note = document.getElementById('orderNote').value.trim();
+
+  const orderData = {
+    table: String(tableNo), items, note, subtotal: sub, tax, service:0, total,
+    status: 'pending', paid:false,
+    createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
+  };
+
+  closeCart();
+  go('sending');
+
+  ordersRef.push(orderData).then(ref=>{
+    cart = {};
+    document.getElementById('orderNote').value='';
+    renderCart(); filterMenu();
+    setTimeout(()=>{
+      go('orders');
+      toast('✅ Order Kitchen मा पठाइयो');
+    }, 1400);
+  }).catch(err=>{
+    console.error('Order push failed:', err);
+    toast('⚠️ Order पठाउन सकिएन।');
+    go('menu');
+  });
+}
+
+if(window.rtdbReady){
+  ordersRef.on('value', snapshot=>{
+    const val = snapshot.val() || {};
+    const all = Object.keys(val).map(id=>({id, ...val[id]}));
+    myOrders = all.filter(o=>o.table===String(tableNo)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+
+    myOrders.forEach(o=>{
+      const prev = previousStatusMap[o.id];
+      if(prev !== undefined && prev !== o.status && STATUS_MSG[o.status]){
+        toast(STATUS_MSG[o.status]);
+        if(stageEnabled(o.status)){
+          if(customerNotifStyle === 'beep'){ beep(); }
+          else if(customerNotifStyle === 'voice'){ speakStatus(o.status); }
+          else { beep(); setTimeout(()=>speakStatus(o.status), 450); } // both — beep first, then voice
+        }
+      }
+    });
+    const newMap = {}; myOrders.forEach(o=>{ newMap[o.id]=o.status; }); previousStatusMap = newMap;
+
+    const activeCount = myOrders.filter(o=>!o.paid).length;
+    document.getElementById('orderBadge').classList.toggle('show', activeCount>0);
+    document.getElementById('orderBadge').textContent = activeCount;
+
+    if(document.getElementById('orders').classList.contains('active')) renderMyOrder();
+    if(document.getElementById('bill').classList.contains('active')) renderBill();
+  }, err=>console.error('Orders sync error:', err));
+}
+let sharedAudioCtx = null;
+function beep(){
+  try{
+    if(!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const ctx = sharedAudioCtx;
+    const playTone = () => {
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='sine'; o.frequency.value=880;
+      g.gain.setValueAtTime(0.15,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.35);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime+0.35);
+    };
+    if(ctx.state === 'suspended'){ ctx.resume().then(playTone).catch(()=>{}); }
+    else { playTone(); }
+  }catch(e){}
+}
+document.addEventListener('pointerdown', function unlockAudioOnce(){
+  if(sharedAudioCtx && sharedAudioCtx.state === 'suspended') sharedAudioCtx.resume().catch(()=>{});
+  document.removeEventListener('pointerdown', unlockAudioOnce);
+}, { once:true });
+
+function fmtTime(d){ if(!d) return ''; return new Date(d).toLocaleTimeString('en-NP',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDateTime(d){ if(!d) return ''; return new Date(d).toLocaleString('en-NP',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+
+function buildTrackHtml(status){
+  const steps = ['pending','accepted','cooking','ready','served'];
+  const labels = ['Sent','Accept','Cook','Ready','Served'];
+  const stepIdx = steps.indexOf(status === 'completed' ? 'served' : status);
+  let html = '<div class="track-mini">';
+  steps.forEach((s,i)=>{
+    const done = i < stepIdx;
+    const active = i === stepIdx;
+    html += `<div class="tm-step">
+      ${i>0?`<div class="tm-line ${i<=stepIdx?'done':''}"></div>`:''}
+      <div class="tm-dot ${done?'done':''} ${active?'active':''}">${done?'✓':(i+1)}</div>
+      <div class="tm-label ${active?'active':''}">${labels[i]}</div>
+    </div>`;
+  });
+  return html + '</div>';
+}
+
+function renderMyOrder(){
+  const box = document.getElementById('orderContent');
+  const allPaid = myOrders.length && myOrders.every(o=>o.paid);
+  const list = allPaid ? [] : myOrders; // once the table's bill is fully paid, treat as a fresh session
+  if(!list.length){
+    box.innerHTML = `<div class="empty-order">
+      <div class="big">📋</div>
+      <p>अहिले कुनै order छैन।<br>Menu बाट खाना order गर्नुहोस्।</p>
+      <button class="btn-gold" onclick="go('menu')">Menu हेर्नुहोस्</button>
+    </div>`;
+    return;
+  }
+  const activeCount = list.filter(o=>!o.paid).length;
+  let html = `<div style="padding:12px 16px 0;font-size:12px;color:var(--dim)">
+    Table <b style="color:var(--text)">${tableNo}</b> · जम्मा <b style="color:var(--gold2)">${list.length}</b> order
+    ${activeCount?` · <span style="color:var(--orange)">${activeCount} active</span>`:''}
+  </div>`;
+
+  list.forEach(o=>{
+    const dateStr = fmtDateTime(o.createdAt);
+    let itemsHtml = (o.items||[]).map(it=>`<div class="oi-row"><span>${escapeHtml(it.name)} × ${it.qty}</span><span>Rs ${it.qty*it.price}</span></div>`).join('');
+    if(o.note) itemsHtml += `<div class="oi-note">📝 ${escapeHtml(o.note)}</div>`;
+    html += `
+    <div class="order-status-card" style="margin-top:12px">
+      <div class="status-header">
+        <div>
+          <div style="font-weight:700;font-size:15px">Order #${o.id.slice(-6).toUpperCase()}</div>
+          <div class="order-meta">🕐 ${dateStr} · Table <b>${o.table}</b></div>
+        </div>
+        <span class="status-badge ${STATUS_CLASS[o.paid?'completed':o.status]||'sb-pending'}">${o.paid?'Paid':(STATUS_LABEL[o.status]||o.status)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:4px">${o.paid?STATUS_MSG.completed:(STATUS_MSG[o.status]||'')}</div>
+      ${o.paid?'':buildTrackHtml(o.status)}
+    </div>
+    <div class="order-items-box">
+      <h4>Items</h4>
+      ${itemsHtml}
+      <div class="oi-row" style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--hair)"><span class="n">Tax</span><span>Rs ${o.tax||0}</span></div>
+      <div class="oi-row"><b>Order Total</b><b style="color:var(--gold2)">Rs ${o.total||0}</b></div>
+    </div>`;
+  });
+
+  const unpaid = list.filter(x=>!x.paid);
+  if(unpaid.length){
+    const gSub = unpaid.reduce((s,o)=>s+(o.subtotal||0),0);
+    const gTax = unpaid.reduce((s,o)=>s+(o.tax||0),0);
+    const gTot = unpaid.reduce((s,o)=>s+(o.total||0),0);
+    html += `<div class="order-items-box" style="border-color:var(--gold)">
+      <h4>Unpaid Summary</h4>
+      <div class="oi-row"><span class="n">${unpaid.length} order(s) subtotal</span><span>Rs ${gSub}</span></div>
+      <div class="oi-row"><span class="n">Tax</span><span>Rs ${gTax}</span></div>
+      <div class="oi-row"><b>Grand Total</b><b style="color:var(--gold2)">Rs ${gTot}</b></div>
+    </div>`;
+  }
+  html += `<div style="padding:14px 16px 24px;display:flex;gap:10px">
+    <button class="btn-outline" style="flex:1" onclick="go('menu')">+ थप Order</button>
+    <button class="btn-gold" style="flex:1" onclick="go('bill')">Bill हेर्नुहोस्</button>
+  </div>`;
+  box.innerHTML = html;
+}
+
+function renderBill(){
+  const box = document.getElementById('billContent');
+  const allPaid = myOrders.length && myOrders.every(x=>x.paid);
+  const activeOrders = allPaid ? [] : myOrders; // once fully paid, this table's session is treated as fresh
+  const unpaid = activeOrders.filter(x=>!x.paid);
+
+  if(!activeOrders.length){
+    box.innerHTML = `<div class="empty-order">
+      <div class="big">🧾</div>
+      <p>अहिले कुनै bill छैन।<br>पहिले order गर्नुहोस्।</p>
+      <button class="btn-gold" onclick="go('menu')">Menu हेर्नुहोस्</button>
+    </div>`;
+    return;
+  }
+
+  let subtotal = 0, sections = '';
+  unpaid.forEach(ord=>{
+    const dt = fmtDateTime(ord.createdAt);
+    sections += `<div style="padding:10px 16px 4px;font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.3px;border-top:1px solid var(--hair)">🕐 ${dt} · Order #${ord.id.slice(-6).toUpperCase()} · ${STATUS_LABEL[ord.status]||ord.status}</div>`;
+    (ord.items||[]).forEach(it=>{
+      subtotal += it.qty*it.price;
+      sections += `<div class="bt-row"><span>${escapeHtml(it.name)}</span><span>${it.qty}</span><span>Rs ${it.qty*it.price}</span></div>`;
+    });
+    if(ord.note) sections += `<div style="padding:4px 16px 8px;font-size:11px;color:var(--orange);font-style:italic">📝 ${escapeHtml(ord.note)}</div>`;
+  });
+  const tax = Math.round(subtotal*0.13);
+  const total = subtotal + tax;
+
+  box.innerHTML = `
+    <div class="bill-card">
+      <div class="bill-head">
+        <div class="cafe cinzel">${CAFE.name}</div>
+        <div class="info">${CAFE.address}<br>Table ${tableNo} · ${unpaid.length} order(s)<br>${fmtDateTime(new Date())}</div>
+      </div>
+      <div class="bill-table">
+        <div class="bt-row head"><span>Item</span><span>Qty</span><span>Amount</span></div>
+        ${sections}
+      </div>
+      <div class="bill-totals">
+        <div class="bt-sum"><span>Subtotal</span><span>Rs ${subtotal}</span></div>
+        <div class="bt-sum"><span>Tax / Service</span><span>Rs ${tax}</span></div>
+        <div class="bt-sum grand"><span>Grand Total</span><span>Rs ${total}</span></div>
+      </div>
+    </div>
+    <div style="margin:0 16px 12px;padding:14px 16px;background:var(--card);border:1px solid var(--hair);border-radius:14px;font-size:12.5px;color:var(--dim);line-height:1.55">
+      💳 भुक्तानी <b style="color:var(--text)">Counter</b> मा हुन्छ।<br>बिल तयार छ — Counter मा गएर तिर्नुहोस्।
+    </div>
+    <div class="pay-cta">
+      <button class="place-btn" onclick="requestBill(${total})"><span>🔔 Counter लाई Bill Ready सूचना</span><span>Rs ${total}</span></button>
+      <button class="btn-outline" style="width:100%;margin-top:10px" onclick="go('orders')">← My Order मा फर्कनुहोस्</button>
+    </div>
+  `;
+}
+function requestBill(total){
+  sendWaiter('🧾 Bill Ready — Table '+tableNo+' · Rs '+total+' · Customer coming to counter');
+  toast('✅ Counter लाई सूचना गयो · कृपया Counter मा गएर तिर्नुहोस्');
+}
+
+function renderReceipt(){
+  const paid = myOrders.filter(o=>o.paid);
+  if(!paid.length) return;
+  let items = [], sub=0;
+  paid.forEach(o=>{ (o.items||[]).forEach(it=>{ items.push(it); sub+=it.qty*it.price; }); });
+  const tax=Math.round(sub*0.13), tot=paid.reduce((s,o)=>s+(o.netTotal||o.total||0),0);
+  const last = paid[0];
+  const method = last.paymentMethod || 'cash';
+  document.getElementById('receiptContent').innerHTML = `
+    <div class="receipt-box">
+      <div class="rc">${CAFE.name}</div>
+      <div class="ri">${CAFE.address}<br>Tel: ${CAFE.phone}</div>
+      <hr>
+      <div class="rl"><span>Table</span><span>${tableNo}</span></div>
+      <div class="rl"><span>Order</span><span>${paid.map(p=>'#'+p.id.slice(-6).toUpperCase()).join(', ')}</span></div>
+      <div class="rl"><span>Payment</span><span>${method.toUpperCase()}</span></div>
+      <hr>
+      ${items.map(it=>`<div class="rl"><span>${escapeHtml(it.name)} x${it.qty}</span><span>${it.qty*it.price}</span></div>`).join('')}
+      <hr>
+      <div class="rl"><span>Subtotal</span><span>${sub}</span></div>
+      <div class="rl"><span>Tax</span><span>${tax}</span></div>
+      <div class="rl rt"><span>TOTAL</span><span>Rs ${tot}</span></div>
+      <hr>
+      <div class="ri" style="margin-top:8px">Thank you! फेरि आउनुहोस् 🙏</div>
+    </div>`;
+}
+
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if(el) el.classList.add('active');
+  window.scrollTo(0,0);
+  const nav = document.getElementById('bottomNav');
+  if(id==='splash'||id==='sending') nav.style.display='none'; else nav.style.display='flex';
+  document.querySelectorAll('.nav-item[data-tab]').forEach(n=>n.classList.remove('active'));
+  if(id==='menu'){ document.querySelector('.nav-item[data-tab="menu"]')?.classList.add('active'); filterMenu(); }
+  if(id==='orders'){ document.querySelector('.nav-item[data-tab="orders"]')?.classList.add('active'); renderMyOrder(); }
+  if(id==='bill'||id==='receipt'){ document.querySelector('.nav-item[data-tab="bill"]')?.classList.add('active'); if(id==='bill') renderBill(); }
+}
+
+function openWaiter(){ document.getElementById('cwOverlay').classList.add('open'); document.getElementById('cwSheet').classList.add('open'); }
+function closeWaiter(){ document.getElementById('cwOverlay').classList.remove('open'); document.getElementById('cwSheet').classList.remove('open'); }
+function sendWaiter(msg){
+  closeWaiter();
+  if(window.rtdbReady && waiterRef){
+    waiterRef.push({
+      table: String(tableNo), message: msg, resolved: false,
+      createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
+    }).then(()=>{
+      toast('🔔 '+msg+' — Table '+tableNo+' · Staff notified');
+    }).catch(err=>{
+      console.error('Waiter call failed:', err);
+      toast('⚠️ Notification पठाउन सकिएन — फेरि प्रयास गर्नुहोस्।');
+    });
+  } else {
+    toast('⚠️ Firebase जोडिएको छैन — Notification पठाउन सकिएन।');
+  }
+}
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toastTxt').textContent=msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3200);
+}
+</script>
+</body>
+</html>
