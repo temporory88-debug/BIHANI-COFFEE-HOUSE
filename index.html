@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Bihani Coffee House · Table Order</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --gold:#C9A84C;--gold2:#E8C96A;--bg:#0a0a0a;--card:#161616;--card2:#1e1e1e;
+  --text:#f0e6c8;--dim:#8a8578;--hair:rgba(201,168,76,.18);
+  --green:#22c55e;--red:#ef4444;--orange:#f97316;--blue:#3b82f6;--purple:#a855f7;
+}
+html,body{background:#000}
+body{
+  font-family:'Poppins',sans-serif;color:var(--text);
+  max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);
+  overflow-x:hidden;position:relative;
+}
+.cinzel{font-family:'Cinzel',serif}
+.mono{font-family:'JetBrains Mono',monospace}
+
+.screen{display:none;min-height:100vh;flex-direction:column;padding-bottom:90px}
+.screen.active{display:flex;animation:fade .28s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+#splash{
+  justify-content:center;align-items:center;text-align:center;padding-bottom:0;
+  background:radial-gradient(circle at 50% 30%,rgba(201,168,76,.12),transparent 55%),var(--bg);
+}
+.ring{width:84px;height:84px;border-radius:50%;border:1px solid #6b5a26;display:flex;align-items:center;justify-content:center;position:relative;margin-bottom:20px;font-size:32px}
+.ring::before{content:'';position:absolute;inset:-1px;border-radius:50%;border:1px solid transparent;border-top-color:var(--gold2);animation:spin 2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.splash-h1{font-size:26px;font-weight:700}.splash-h1 span{color:var(--gold2)}
+.splash-sub{margin-top:8px;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)}
+.splash-tag{margin-top:10px;font-size:12.5px;color:var(--gold2);font-style:italic}
+.loadbar{width:110px;height:2px;background:#221c10;border-radius:2px;overflow:hidden;margin-top:36px}
+.loadbar::after{content:'';display:block;height:100%;width:40%;background:linear-gradient(90deg,transparent,var(--gold2),transparent);animation:lm 1.2s ease-in-out infinite}
+@keyframes lm{0%{transform:translateX(-130%)}100%{transform:translateX(230%)}}
+
+.topbar{background:linear-gradient(160deg,#1a1200,#0a0800);padding:14px 16px 12px;text-align:center;border-bottom:2px solid var(--gold);position:sticky;top:0;z-index:40}
+.topbar .name{font-size:17px;letter-spacing:1px;color:var(--gold2)}
+.topbar .tag{font-size:10px;letter-spacing:1.2px;color:var(--dim);text-transform:uppercase;margin-top:3px}
+.topbar-row{display:flex;align-items:center;justify-content:space-between}
+.back{color:var(--gold2);font-size:13px;font-weight:600;cursor:pointer;min-width:50px;text-align:left}
+
+.search-bar{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:11px 14px;margin:12px 16px 0}
+.search-bar input{background:none;border:none;outline:none;color:var(--text);font-family:'Poppins';font-size:13px;width:100%}
+.search-bar input::placeholder{color:var(--dim)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:12px 16px 2px;scrollbar-width:none;position:sticky;top:66px;background:var(--bg);z-index:35;border-bottom:1px solid var(--hair);padding-bottom:10px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex-shrink:0;padding:7px 14px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid var(--hair);color:var(--dim);background:var(--card);cursor:pointer}
+.chip.active{background:var(--gold);color:#141210;border-color:var(--gold)}
+
+.list{padding:12px 16px 150px;display:flex;flex-direction:column;gap:10px}
+.item-card{display:flex;gap:12px;background:var(--card);border:1px solid var(--hair);border-radius:16px;padding:11px}
+.item-thumb{width:66px;height:66px;border-radius:12px;background:linear-gradient(145deg,#2a2419,#171410);display:flex;align-items:center;justify-content:center;font-size:26px;border:1px solid var(--hair);flex-shrink:0}
+.item-info{flex:1;min-width:0;display:flex;flex-direction:column}
+.item-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.item-name{font-size:13.5px;font-weight:600}
+.veg{font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:5px;flex-shrink:0}
+.veg.v{background:rgba(34,197,94,.15);color:var(--green)}.veg.n{background:rgba(239,68,68,.15);color:var(--red)}
+.item-desc{font-size:10.5px;color:var(--dim);margin-top:2px}
+.item-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.item-price{font-size:13px;font-weight:600;color:var(--gold2)}
+.add-btn{background:transparent;border:1px solid var(--gold);color:var(--gold2);font-size:10.5px;font-weight:700;padding:6px 13px;border-radius:999px;cursor:pointer}
+.qty-stepper{display:none;align-items:center;gap:8px;background:var(--gold);border-radius:999px;padding:4px 6px 4px 10px}
+.qty-stepper.show{display:flex}
+.qty-stepper button{background:none;border:none;color:#141210;font-weight:800;font-size:14px;width:16px;cursor:pointer}
+.qty-stepper span{font-weight:700;font-size:12px;color:#141210;min-width:12px;text-align:center}
+.menu-section-header{padding:14px 4px 4px;font-size:13px;font-weight:700;color:var(--gold2);display:flex;align-items:center;gap:6px}
+
+.float-cart{position:fixed;left:50%;transform:translateX(-50%) translateY(130%);width:calc(100% - 32px);max-width:398px;bottom:76px;background:linear-gradient(120deg,var(--gold),var(--gold2));color:#141210;border-radius:14px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 10px 24px rgba(201,168,76,.35);z-index:50;transition:transform .35s cubic-bezier(.2,.9,.3,1.2);cursor:pointer}
+.float-cart.show{transform:translateX(-50%) translateY(0)}
+#splash.active ~ .float-cart{display:none !important}
+.fc-left{display:flex;align-items:center;gap:9px}
+.fc-badge{background:#141210;color:var(--gold2);font-size:11px;font-weight:700;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.fc-txt{font-size:13px;font-weight:700}.fc-price{font-weight:800;font-size:14px}
+
+.bottom-nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:430px;background:var(--card2);border-top:1px solid var(--hair);display:flex;justify-content:space-around;align-items:flex-end;padding:6px 2px 14px;z-index:60;min-height:66px}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--dim);cursor:pointer;padding:6px 2px;position:relative;min-width:0;user-select:none}
+.nav-item.active{color:var(--gold2)}
+.nav-item .ico{font-size:20px;line-height:1}
+.nav-item span{font-size:9px;font-weight:700;letter-spacing:.2px;white-space:nowrap}
+.nav-badge{position:absolute;top:2px;right:calc(50% - 16px);background:var(--red);color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px;border:1.5px solid var(--card2)}
+.nav-badge.show{display:flex}
+.nav-item.call-center .cw-btn{width:52px;height:52px;border-radius:50%;background:linear-gradient(145deg,var(--gold),var(--gold2));display:flex;align-items:center;justify-content:center;margin-top:-26px;font-size:22px;box-shadow:0 6px 18px rgba(201,168,76,.45);border:3px solid var(--card2);color:#141210}
+.nav-item.call-center span{color:var(--gold2);font-weight:700;margin-top:2px}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:70;display:none}
+.overlay.open{display:block}
+.sheet{position:fixed;left:50%;transform:translateX(-50%) translateY(110%);bottom:0;width:100%;max-width:430px;background:var(--card2);border-radius:22px 22px 0 0;padding:16px 16px 28px;z-index:80;transition:transform .32s cubic-bezier(.2,.9,.3,1);border-top:1px solid var(--hair);max-height:88vh;display:flex;flex-direction:column}
+.sheet.open{transform:translateX(-50%) translateY(0)}
+.handle{width:38px;height:4px;background:var(--hair);border-radius:4px;margin:0 auto 12px;flex-shrink:0}
+.sheet h3{text-align:center;font-size:15px;margin-bottom:12px}
+.cw-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cw-opt{background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:16px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font-size:12.5px;font-weight:600}
+.cw-opt:active{border-color:var(--gold)}
+.cw-opt .ic{font-size:26px}
+
+#cartSheet{height:0;overflow:hidden;transition:height .38s cubic-bezier(.2,.9,.3,1);max-height:none;padding-bottom:20px}
+#cartSheet.open{height:84vh}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;padding:0 2px 12px;border-bottom:1px solid var(--hair);flex-shrink:0}
+.sheet-title{font-size:17px;font-weight:700}
+.sheet-close{color:var(--dim);font-size:12px;cursor:pointer}
+.sheet-body{flex:1;overflow-y:auto;padding:8px 2px}
+.cart-line{display:grid;grid-template-columns:1.5fr .7fr 1fr;align-items:center;gap:6px;padding:11px 0;border-bottom:1px solid var(--hair)}
+.cl-name{font-size:13px;font-weight:600}.cl-sub{font-size:10px;color:var(--dim);margin-top:2px}
+.cl-mid{font-size:12.5px;color:var(--gold2);font-weight:600;text-align:center}
+.cl-step{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--hair);border-radius:999px;padding:4px 8px;justify-self:end}
+.cl-step button{background:none;border:none;color:var(--gold2);font-weight:800;font-size:13px;width:14px;cursor:pointer}
+.cl-step span{font-weight:700;font-size:12px;min-width:10px;text-align:center}
+.note-box{margin-top:10px;background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:10px 12px}
+.note-box label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--gold);font-weight:700}
+.note-box textarea{width:100%;background:none;border:none;outline:none;color:var(--text);font-family:'Poppins';font-size:12px;margin-top:4px;resize:none;height:36px}
+.sheet-foot{padding:10px 2px 4px;border-top:1px solid var(--hair);flex-shrink:0}
+.sum-row{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:5px}
+.sum-row.total{font-size:15px;color:var(--text);font-weight:700;padding-top:8px;border-top:1px dashed var(--hair)}
+.place-btn{width:100%;margin-top:12px;background:linear-gradient(120deg,var(--gold),var(--gold2));color:#141210;border:none;padding:15px 18px;border-radius:14px;font-weight:700;font-size:13px;display:flex;justify-content:space-between;cursor:pointer}
+.place-btn:disabled{opacity:.5;cursor:not-allowed}
+
+.center-screen{justify-content:center;align-items:center;text-align:center;padding:24px;gap:6px}
+.check-ring{width:68px;height:68px;border-radius:50%;background:rgba(34,197,94,.12);border:1.5px solid var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:12px;font-size:28px;color:var(--green)}
+.order-no{margin-top:14px;background:var(--card);border:1px dashed var(--hair);border-radius:14px;padding:12px 24px}
+.order-no .l{font-size:9.5px;letter-spacing:1.5px;color:var(--dim);text-transform:uppercase}
+.order-no .v{font-size:18px;font-weight:700;color:var(--gold2);margin-top:3px}
+.btn-row{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;justify-content:center}
+.btn-gold{background:var(--gold);color:#141210;border:none;padding:12px 22px;border-radius:999px;font-weight:700;font-size:12px;cursor:pointer}
+.btn-outline{background:transparent;border:1px solid var(--gold);color:var(--gold2);padding:12px 18px;border-radius:999px;font-weight:700;font-size:12px;cursor:pointer}
+
+.order-status-card{margin:16px;background:var(--card);border:1px solid var(--hair);border-radius:16px;padding:16px}
+.status-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.status-badge{font-size:11px;font-weight:700;padding:5px 12px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px}
+.sb-pending{background:rgba(249,115,22,.15);color:var(--orange)}
+.sb-accepted{background:rgba(59,130,246,.15);color:var(--blue)}
+.sb-cooking{background:rgba(59,130,246,.15);color:var(--blue)}
+.sb-ready{background:rgba(168,85,247,.15);color:var(--purple)}
+.sb-served{background:rgba(34,197,94,.15);color:var(--green)}
+.sb-paid{background:rgba(34,197,94,.2);color:var(--green)}
+.order-meta{font-size:11px;color:var(--dim);margin-bottom:4px}
+.order-meta b{color:var(--text)}
+.track-mini{display:flex;align-items:center;gap:0;margin:16px 0 8px;padding:0 4px}
+.tm-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative}
+.tm-dot{width:24px;height:24px;border-radius:50%;background:var(--card2);border:2px solid var(--hair);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--dim);z-index:1}
+.tm-dot.done{background:var(--green);border-color:var(--green);color:#0a0a0a}
+.tm-dot.active{background:var(--gold);border-color:var(--gold);color:#141210}
+.tm-label{font-size:9px;color:var(--dim);font-weight:600;text-align:center}
+.tm-label.active{color:var(--gold2)}
+.tm-line{position:absolute;top:12px;left:50%;width:100%;height:2px;background:var(--hair);z-index:0}
+.tm-line.done{background:var(--green)}
+.order-items-box{margin:0 16px 12px;background:var(--card);border:1px solid var(--hair);border-radius:16px;padding:14px 16px}
+.order-items-box h4{font-size:12px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+.oi-row{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-bottom:1px solid var(--hair)}
+.oi-row:last-child{border:none}
+.oi-row .n{color:var(--dim);font-size:12px}
+.oi-note{margin-top:8px;font-size:11.5px;color:var(--orange);font-style:italic}
+.empty-order{text-align:center;padding:48px 24px;color:var(--dim)}
+.empty-order .big{font-size:48px;margin-bottom:12px;opacity:.5}
+.empty-order p{font-size:13px;line-height:1.5;margin-bottom:16px}
+
+.bill-card{margin:16px;background:var(--card);border:1px solid var(--hair);border-radius:16px;overflow:hidden}
+.bill-head{padding:14px 16px;border-bottom:1px solid var(--hair);text-align:center}
+.bill-head .cafe{font-size:15px;color:var(--gold2);font-weight:700}
+.bill-head .info{font-size:10.5px;color:var(--dim);margin-top:4px;line-height:1.6}
+.bill-table{padding:4px 0}
+.bt-row{display:grid;grid-template-columns:2fr .5fr 1fr;padding:10px 16px;font-size:12.5px;border-bottom:1px solid var(--hair)}
+.bt-row.head{font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.bt-row span:nth-child(2){text-align:center;color:var(--dim)}
+.bt-row span:nth-child(3){text-align:right;font-weight:600}
+.bill-totals{padding:12px 16px}
+.bt-sum{display:flex;justify-content:space-between;font-size:12.5px;color:var(--dim);padding:4px 0}
+.bt-sum.grand{font-size:16px;font-weight:700;color:var(--text);padding-top:10px;margin-top:6px;border-top:1px dashed var(--hair)}
+.bt-sum.grand span:last-child{color:var(--gold2)}
+.pay-cta{margin:0 16px 20px}
+.paid-stamp{text-align:center;padding:20px;margin:16px;background:rgba(34,197,94,.08);border:1.5px dashed var(--green);border-radius:16px}
+.paid-stamp .big{font-size:36px;margin-bottom:8px}
+.paid-stamp h3{color:var(--green);font-size:16px}
+.paid-stamp p{font-size:12px;color:var(--dim);margin-top:6px}
+
+.receipt-box{margin:16px;background:#fdfaf2;color:#1a1a1a;border-radius:12px;padding:20px 16px;font-family:'JetBrains Mono',monospace}
+.receipt-box .rc{text-align:center;font-family:'Cinzel',serif;font-size:14px;font-weight:700;color:#333}
+.receipt-box .ri{text-align:center;font-size:10px;color:#666;margin-top:4px;line-height:1.5}
+.receipt-box hr{border:none;border-top:1px dashed #999;margin:10px 0}
+.receipt-box .rl{display:flex;justify-content:space-between;font-size:11px;margin:4px 0}
+.receipt-box .rt{font-weight:700;font-size:13px}
+
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-140%);width:calc(100% - 32px);max-width:398px;background:var(--card2);border:1px solid var(--gold);border-radius:14px;padding:12px 16px;z-index:200;display:flex;align-items:center;gap:10px;box-shadow:0 12px 28px rgba(0,0,0,.5);transition:transform .35s cubic-bezier(.2,.9,.3,1.2);font-size:12.5px}
+.toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"><span id="toastTxt"></span></div>
+
+<div class="screen active" id="splash">
+  <div class="ring">☕</div>
+  <div class="splash-h1 cinzel">Bihani <span>Coffee House</span></div>
+  <div class="splash-sub">Bhojpur-7, Bank Road</div>
+  <div class="splash-tag">"Where Every Cup Tells a Story"</div>
+  <div class="loadbar"></div>
+</div>
+
+<div class="screen" id="menu">
+  <div class="topbar">
+    <div class="name cinzel">Bihani Coffee House</div>
+    <div class="tag" id="tableTag">Table 04 · Dine In</div>
+  </div>
+  <div class="search-bar"><span style="opacity:.5">🔍</span><input id="search" placeholder="Search momo, coffee, pizza..." oninput="filterMenu()"></div>
+  <div class="chips" id="chips"></div>
+  <div class="list" id="menuList"><div style="text-align:center;color:var(--dim);padding:40px 0;font-size:13px">🔄 Menu लोड हुँदै...</div></div>
+</div>
+
+<div class="screen center-screen" id="sending">
+  <div style="font-size:48px;margin-bottom:8px">☕</div>
+  <h2 class="cinzel" style="font-size:18px">Sending Order...</h2>
+  <p style="font-size:12px;color:var(--dim);margin-top:6px">Kitchen सम्म पुर्‍याउँदै — एक छिन</p>
+</div>
+
+<div class="screen" id="orders">
+  <div class="topbar">
+    <div class="name cinzel">My Order</div>
+    <div class="tag" id="orderTableTag">Table 04</div>
+  </div>
+  <div id="orderContent"></div>
+</div>
+
+<div class="screen" id="bill">
+  <div class="topbar">
+    <div class="topbar-row">
+      <span class="back" onclick="go('menu')">← Menu</span>
+      <span class="name cinzel" style="font-size:15px">Bill & Pay</span>
+      <span style="width:50px"></span>
+    </div>
+  </div>
+  <div id="billContent"></div>
+</div>
+
+<div class="screen" id="receipt">
+  <div class="topbar">
+    <div class="name cinzel">Receipt</div>
+    <div class="tag">Payment Complete</div>
+  </div>
+  <div id="receiptContent"></div>
+  <div style="padding:0 16px 20px">
+    <button class="place-btn" style="justify-content:center" onclick="go('menu')">← Menu मा फर्कनुहोस्</button>
+  </div>
+</div>
+
+<div class="float-cart" id="floatCart" onclick="openCart()">
+  <div class="fc-left"><div class="fc-badge" id="fcCount">0</div><div class="fc-txt">View Cart</div></div>
+  <div class="fc-price" id="fcPrice">Rs 0</div>
+</div>
+
+<nav class="bottom-nav" id="bottomNav" style="display:none">
+  <div class="nav-item active" data-tab="menu" onclick="go('menu')">
+    <div class="ico">🍽️</div><span>MENU</span>
+  </div>
+  <div class="nav-item call-center" onclick="openWaiter()">
+    <div class="cw-btn">🔔</div><span>CALL WAITER</span>
+  </div>
+  <div class="nav-item" data-tab="orders" onclick="go('orders')">
+    <div class="ico">📋</div><span>MY ORDER</span>
+    <div class="nav-badge" id="orderBadge">1</div>
+  </div>
+  <div class="nav-item" data-tab="bill" onclick="go('bill')">
+    <div class="ico">💳</div><span>BILL</span>
+  </div>
+</nav>
+
+<div class="overlay" id="cwOverlay" onclick="closeWaiter()"></div>
+<div class="sheet" id="cwSheet">
+  <div class="handle"></div>
+  <h3 class="cinzel">के चाहनुहुन्छ?</h3>
+  <div class="cw-grid">
+    <div class="cw-opt" onclick="sendWaiter('💧 Water Please')"><span class="ic">💧</span>Water Please</div>
+    <div class="cw-opt" onclick="sendWaiter('🧾 Bill Please')"><span class="ic">🧾</span>Bill Please</div>
+    <div class="cw-opt" onclick="sendWaiter('🙋‍♂️ Call Waiter')"><span class="ic">🙋‍♂️</span>Call Waiter</div>
+    <div class="cw-opt" onclick="sendWaiter('❓ Need Help')"><span class="ic">❓</span>Need Help</div>
+  </div>
+</div>
+
+<div class="overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="sheet" id="cartSheet">
+  <div class="handle"></div>
+  <div class="sheet-head">
+    <div class="sheet-title cinzel">Your Order</div>
+    <div class="sheet-close" onclick="closeCart()">Close ✕</div>
+  </div>
+  <div class="sheet-body" id="cartBody"></div>
+  <div class="note-box"><label>Special Note</label><textarea id="orderNote" placeholder="e.g. Less spicy, extra chutney..."></textarea></div>
+  <div class="sheet-foot">
+    <div class="sum-row"><span>Subtotal</span><span id="sSub">Rs 0</span></div>
+    <div class="sum-row"><span>Service / Tax (13%)</span><span id="sTax">Rs 0</span></div>
+    <div class="sum-row total"><span>Grand Total</span><span id="sTot" style="color:var(--gold2)">Rs 0</span></div>
+    <button class="place-btn" id="placeBtn" onclick="placeOrder()"><span>पठाउनुहोस् · Place Order</span><span id="sBtn">Rs 0 →</span></button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyB-egkmW0c1s0HnttLBhpuuXljGcrWyRjQ",
+  authDomain: "bihani-coffee-house.firebaseapp.com",
+  databaseURL: "https://bihani-coffee-house-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "bihani-coffee-house",
+  storageBucket: "bihani-coffee-house.firebasestorage.app",
+  messagingSenderId: "175493614771",
+  appId: "1:175493614771:web:ce06c0453730cf929574c6",
+  measurementId: "G-2DNHWRTM8Q"
+};
+window.rtdbReady = false;
+let rtdb, ordersRef, menuRef, waiterRef;
+try {
+  firebase.initializeApp(firebaseConfig);
+  rtdb = firebase.database();
+  ordersRef = rtdb.ref('orders');
+  menuRef = rtdb.ref('menu');
+  waiterRef = rtdb.ref('waiterCalls');
+  window.rtdbReady = true;
+} catch(e) {
+  console.error('Firebase init failed:', e);
+}
+
+const CAFE = { name: 'Bihani Coffee House', address: 'Bhojpur-7, Bank Road', phone: '9860293236 / 9817360844' };
+const STATUS_LABEL = {pending:'Pending',accepted:'Accepted',cooking:'Cooking',ready:'Ready',served:'Served',completed:'Paid'};
+const STATUS_CLASS = {pending:'sb-pending',accepted:'sb-accepted',cooking:'sb-cooking',ready:'sb-ready',served:'sb-served',completed:'sb-paid'};
+const STATUS_MSG = {
+  pending: 'Order kitchen मा पठाइयो — accept हुन पर्खँदै',
+  accepted: 'Kitchen ले order accept गर्‍यो',
+  cooking: 'खाना पकाइँदै छ...',
+  ready: 'तयार! चाँडै table मा आउँछ',
+  served: 'Serve भयो — मीठो खानुहोस्! Enjoy your meal 🍽️',
+  completed: 'भुक्तानी पूरा भयो — धन्यवाद! फेरि आउनुहोस् 🙏'
+};
+// Spoken (TTS) versions — bilingual, chosen via the language toggle on the My Order screen
+const STATUS_SPOKEN = {
+  ne: {
+    pending: 'तपाईंले पठाउनुभएको अर्डर काउन्टरमा पुग्यो',
+    accepted: 'तपाईंले अर्डर गर्नुभएको काउन्टरमा Accept भएको छ',
+    cooking: 'तपाईंको खाना पकाउन थालिएको छ',
+    ready: 'तपाईंको अर्डर तयार भयो, चाँडै टेबलमा आउनेछ',
+    served: 'तपाईंको अर्डर टेबलमा पुग्यो, मीठो खानुहोस्',
+    completed: 'भुक्तानी पूरा भयो, धन्यवाद! फेरि पनि आउनुहोस्'
+  },
+  en: {
+    pending: 'Your order has reached the counter',
+    accepted: 'Your order has been accepted at the counter',
+    cooking: 'Your food is being cooked',
+    ready: 'Your order is ready, it will reach your table soon',
+    served: 'Your order has been served, enjoy your meal',
+    completed: 'Payment complete, thank you! Please visit again'
+  }
+};
+let trackVoiceLang = 'ne'; // updated live from settings/customerVoiceLang (controlled from the staff app)
+let customerNotifStyle = 'both'; // beep | voice | both — updated live from settings/customerNotifStyle
+let customerNotifStages = {}; // per-stage on/off — updated live from settings/customerNotifStages
+if(window.rtdbReady){
+  rtdb.ref('settings/customerVoiceLang').on('value', snap => {
+    trackVoiceLang = (snap.val() === 'en') ? 'en' : 'ne';
+  });
+  rtdb.ref('settings/customerNotifStyle').on('value', snap => {
+    customerNotifStyle = snap.val() || 'both';
+  });
+  rtdb.ref('settings/customerNotifStages').on('value', snap => {
+    customerNotifStages = snap.val() || {};
+  });
+}
+function stageEnabled(status){ return customerNotifStages[status] !== false; } // default on if never set by staff
+function speakStatus(status){
+  try{
+    const text = (STATUS_SPOKEN[trackVoiceLang] || STATUS_SPOKEN.ne)[status];
+    if(!text) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = trackVoiceLang === 'en' ? 'en-US' : 'ne-NP';
+    u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function categoryIcon(cat){
+  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Today Special':'⭐' };
+  return map[cat] || '🍽️';
+}
+
+let cart = {};
+let scrollObserver = null;
+let liveMenu = [];
+let allCategories = [];
+let selectedCat = '__all__';
+let tableNo = '04';
+let myOrders = [];
+let previousStatusMap = {};
+
+const params = new URLSearchParams(location.search);
+tableNo = params.get('table') || '04';
+document.getElementById('tableTag').textContent = `Table ${tableNo} · Dine In`;
+document.getElementById('orderTableTag').textContent = `Table ${tableNo}`;
+// Table numbers must compare equal no matter how they were written — this
+// QR link may pass a zero-padded number ("04") while the staff app writes
+// and compares plain numbers ("4"). That mismatch was the real cause of
+// orders "disappearing": an order placed here for Table 4 (as "04") never
+// matched the staff app's Table Grid/Detail/Billing screens, which compare
+// against "4". Every write/comparison against Firebase below uses this
+// normalized form; on-screen labels still show the original tableNo so the
+// customer sees whatever their QR code said (e.g. "Table 04").
+function normTable(t){ return String(t==null?'':t).trim().replace(/^0+(?=\d)/,''); }
+
+setTimeout(()=>{ go('menu'); document.getElementById('bottomNav').style.display='flex'; }, 2000);
+
+function showFirebaseUnavailable(){
+  document.getElementById('menuList').innerHTML = '<div style="text-align:center;color:var(--dim);padding:40px 16px;font-size:12px;line-height:1.6">⚠️ Firebase जोडिन सकेन।<br>यो फाइल hosted URL बाट खोल्नुहोस्।</div>';
+}
+if(window.rtdbReady){
+  try {
+    menuRef.on('value', snapshot => {
+      const val = snapshot.val() || {};
+      liveMenu = Object.keys(val).map(id => ({ id, ...val[id] })).filter(it=>it.available);
+      allCategories = [...new Set(liveMenu.map(it=>it.category).filter(c=>c && c.toLowerCase()!=='today special'))]
+        .sort((a,b)=>{
+          if(a.toLowerCase()==='add-on') return 1;
+          if(b.toLowerCase()==='add-on') return -1;
+          return a.localeCompare(b);
+        });
+      renderChips();
+      filterMenu();
+    }, err => { console.error('Menu error:', err); showFirebaseUnavailable(); });
+  } catch(e){ showFirebaseUnavailable(); }
+} else {
+  showFirebaseUnavailable();
+}
+
+function renderChips(){
+  const hasBest = liveMenu.some(it=>it.bestSeller);
+  let html = `<div class="chip ${selectedCat==='__all__'?'active':''}" data-cat="__all__" onclick="setCat(this)">सबै</div>`;
+  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">🌟 Today Special</div>`;
+  allCategories.forEach(c=>{ html += `<div class="chip ${selectedCat===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCat(this)">${categoryIcon(c)} ${escapeHtml(c)}</div>`; });
+  document.getElementById('chips').innerHTML = html;
+}
+function setCat(el){
+  const cat = el.dataset.cat;
+  if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__'){
+    const header = [...document.querySelectorAll('.menu-section-header')].find(h=>h.dataset.sectionCat===cat);
+    if(header){ header.scrollIntoView({behavior:'smooth', block:'start'}); return; }
+  }
+  if(cat==='__all__'){
+    const searchBox = document.getElementById('search');
+    if(searchBox) searchBox.value = ''; // tapping "सबै" always shows everything — clear any leftover search text too
+  }
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  selectedCat = cat;
+  filterMenu();
+}
+
+function filterMenu(){
+  const q = (document.getElementById('search').value||'').toLowerCase().trim();
+  let items = liveMenu.slice();
+  if(selectedCat==='__best__') items = items.filter(i=>i.bestSeller);
+  else if(selectedCat!=='__all__') items = items.filter(i=>i.category===selectedCat);
+  if(q) items = items.filter(i=>(i.name||'').toLowerCase().includes(q)||(i.category||'').toLowerCase().includes(q));
+  renderMenu(items, !q && selectedCat==='__all__');
+}
+
+function itemCardHtml(it){
+  const inCart = cart[it.name];
+  return `<div class="item-card">
+    <div class="item-thumb">${it.emoji||categoryIcon(it.category)}</div>
+    <div class="item-info">
+      <div class="item-top"><div class="item-name">${escapeHtml(it.name)}</div><div class="veg ${it.veg?'v':'n'}">${it.veg?'Veg':'Non-Veg'}</div></div>
+      <div class="item-desc">${escapeHtml(it.category||'')}</div>
+      <div class="item-bottom">
+        <div class="item-price">Rs ${it.price}</div>
+        <button class="add-btn" style="${inCart?'display:none':''}" onclick="addItem('${it.id}')">+ ADD</button>
+        <div class="qty-stepper ${inCart?'show':''}">
+          <button onclick="chgQty('${it.id}',-1)">−</button>
+          <span>${inCart?inCart.qty:1}</span>
+          <button onclick="chgQty('${it.id}',1)">+</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderMenu(items, grouped){
+  const list = document.getElementById('menuList');
+  if(!items.length){ list.innerHTML='<div style="text-align:center;color:var(--dim);padding:40px 0;font-size:13px">कुनै item भेटिएन</div>'; return; }
+  if(grouped){
+    const groups = {};
+    items.forEach(it=>{ const c=it.category||'General'; (groups[c]=groups[c]||[]).push(it); });
+    const catNames = Object.keys(groups).sort((a,b)=>{
+      const al = a.toLowerCase(), bl = b.toLowerCase();
+      if(al==='today special') return -1;
+      if(bl==='today special') return 1;
+      if(al==='add-on') return 1;
+      if(bl==='add-on') return -1;
+      return a.localeCompare(b);
+    });
+    list.innerHTML = catNames.map(cat=>`
+      <div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>
+      ${groups[cat].map(itemCardHtml).join('')}
+    `).join('');
+    setupScrollSpy();
+  } else {
+    list.innerHTML = items.map(itemCardHtml).join('');
+  }
+}
+
+function setupScrollSpy(){
+  if(scrollObserver) scrollObserver.disconnect();
+  const headers = document.querySelectorAll('.menu-section-header');
+  if(!headers.length || !('IntersectionObserver' in window)) return;
+  scrollObserver = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const cat = entry.target.dataset.sectionCat;
+        document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', c.dataset.cat===cat));
+      }
+    });
+  }, { rootMargin:'-140px 0px -70% 0px', threshold:0 });
+  headers.forEach(h=>scrollObserver.observe(h));
+}
+
+function findMenuItem(id){ return liveMenu.find(it=>it.id===id); }
+function addItem(id){
+  const it = findMenuItem(id); if(!it) return;
+  cart[it.name] = { qty:1, price:it.price, id };
+  renderCart(); filterMenu();
+}
+function chgQty(id, dir){
+  const it = findMenuItem(id); if(!it) return;
+  if(!cart[it.name]) return;
+  cart[it.name].qty += dir;
+  if(cart[it.name].qty<=0) delete cart[it.name];
+  renderCart(); filterMenu();
+}
+function renderCart(){
+  let count=0, sub=0, body='';
+  for(const name in cart){
+    const {qty,price}=cart[name];
+    count+=qty; sub+=qty*price;
+    body+=`<div class="cart-line">
+      <div><div class="cl-name">${escapeHtml(name)}</div><div class="cl-sub">Rs ${price} × ${qty}</div></div>
+      <div class="cl-mid">Rs ${qty*price}</div>
+      <div class="cl-step">
+        <button onclick="chgQty('${cart[name].id}',-1)">−</button>
+        <span>${qty}</span>
+        <button onclick="chgQty('${cart[name].id}',1)">+</button>
+      </div>
+    </div>`;
+  }
+  document.getElementById('cartBody').innerHTML = body || '<div style="text-align:center;color:var(--dim);padding:28px 0;font-size:13px">Cart खाली छ — Menu बाट item थप्नुहोस्</div>';
+  const tax=Math.round(sub*0.13), tot=sub+tax;
+  document.getElementById('fcCount').textContent=count;
+  document.getElementById('fcPrice').textContent='Rs '+sub;
+  document.getElementById('sSub').textContent='Rs '+sub;
+  document.getElementById('sTax').textContent='Rs '+tax;
+  document.getElementById('sTot').textContent='Rs '+tot;
+  document.getElementById('sBtn').textContent='Rs '+tot+' →';
+  document.getElementById('floatCart').classList.toggle('show', count>0);
+}
+function openCart(){ document.getElementById('cartOverlay').classList.add('open'); document.getElementById('cartSheet').classList.add('open'); }
+function closeCart(){ document.getElementById('cartOverlay').classList.remove('open'); document.getElementById('cartSheet').classList.remove('open'); }
+
+function placeOrder(){
+  const items = Object.keys(cart).map(n=>({name:n,qty:cart[n].qty,price:cart[n].price}));
+  if(!items.length){ toast('Cart खाली छ'); return; }
+  if(!window.rtdbReady){ toast('⚠️ Firebase जोडिएको छैन — Order पठाउन सकिएन।'); return; }
+  const sub = items.reduce((s,i)=>s+i.qty*i.price,0);
+  const tax = Math.round(sub*0.13);
+  const total = sub+tax;
+  const note = document.getElementById('orderNote').value.trim();
+
+  const orderData = {
+    table: normTable(tableNo), items, note, subtotal: sub, tax, service:0, total,
+    status: 'pending', paid:false,
+    createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
+  };
+
+  closeCart();
+  go('sending');
+
+  ordersRef.push(orderData).then(ref=>{
+    cart = {};
+    document.getElementById('orderNote').value='';
+    renderCart(); filterMenu();
+    setTimeout(()=>{
+      go('orders');
+      toast('✅ Order Kitchen मा पठाइयो');
+    }, 1400);
+  }).catch(err=>{
+    console.error('Order push failed:', err);
+    toast('⚠️ Order पठाउन सकिएन।');
+    go('menu');
+  });
+}
+
+if(window.rtdbReady){
+  ordersRef.on('value', snapshot=>{
+    const val = snapshot.val() || {};
+    const all = Object.keys(val).map(id=>({id, ...val[id]}));
+    myOrders = all.filter(o=>normTable(o.table)===normTable(tableNo)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+
+    myOrders.forEach(o=>{
+      const prev = previousStatusMap[o.id];
+      if(prev !== undefined && prev !== o.status && STATUS_MSG[o.status]){
+        toast(STATUS_MSG[o.status]);
+        if(stageEnabled(o.status)){
+          if(customerNotifStyle === 'beep'){ beep(); }
+          else if(customerNotifStyle === 'voice'){ speakStatus(o.status); }
+          else { beep(); setTimeout(()=>speakStatus(o.status), 450); } // both — beep first, then voice
+        }
+      }
+    });
+    const newMap = {}; myOrders.forEach(o=>{ newMap[o.id]=o.status; }); previousStatusMap = newMap;
+
+    const activeCount = myOrders.filter(o=>!o.paid).length;
+    document.getElementById('orderBadge').classList.toggle('show', activeCount>0);
+    document.getElementById('orderBadge').textContent = activeCount;
+
+    if(document.getElementById('orders').classList.contains('active')) renderMyOrder();
+    if(document.getElementById('bill').classList.contains('active')) renderBill();
+  }, err=>console.error('Orders sync error:', err));
+}
+let sharedAudioCtx = null;
+function beep(){
+  try{
+    if(!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const ctx = sharedAudioCtx;
+    const playTone = () => {
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='sine'; o.frequency.value=880;
+      g.gain.setValueAtTime(0.15,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.35);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime+0.35);
+    };
+    if(ctx.state === 'suspended'){ ctx.resume().then(playTone).catch(()=>{}); }
+    else { playTone(); }
+  }catch(e){}
+}
+document.addEventListener('pointerdown', function unlockAudioOnce(){
+  if(sharedAudioCtx && sharedAudioCtx.state === 'suspended') sharedAudioCtx.resume().catch(()=>{});
+  document.removeEventListener('pointerdown', unlockAudioOnce);
+}, { once:true });
+
+function fmtTime(d){ if(!d) return ''; return new Date(d).toLocaleTimeString('en-NP',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDateTime(d){ if(!d) return ''; return new Date(d).toLocaleString('en-NP',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+
+function buildTrackHtml(status){
+  const steps = ['pending','accepted','cooking','ready','served'];
+  const labels = ['Sent','Accept','Cook','Ready','Served'];
+  const normalized = String(status||'').trim().toLowerCase();
+  let stepIdx = steps.indexOf(normalized === 'completed' ? 'served' : normalized);
+  if(stepIdx === -1) stepIdx = 0; // unrecognized status — still show step 1 as active instead of no color at all
+  const isFinalStep = stepIdx === steps.length - 1; // 'served' — nothing left pending, so mark it done (checkmark) not active (gold)
+  let html = '<div class="track-mini">';
+  steps.forEach((s,i)=>{
+    const done = i < stepIdx || (isFinalStep && i === stepIdx);
+    const active = i === stepIdx && !isFinalStep;
+    html += `<div class="tm-step">
+      ${i>0?`<div class="tm-line ${i<=stepIdx?'done':''}"></div>`:''}
+      <div class="tm-dot ${done?'done':''} ${active?'active':''}">${done?'✓':(i+1)}</div>
+      <div class="tm-label ${active?'active':''}">${labels[i]}</div>
+    </div>`;
+  });
+  return html + '</div>';
+}
+
+function renderMyOrder(){
+  const box = document.getElementById('orderContent');
+  // Billing is "done" for the table once every order is status:'completed' —
+  // not necessarily paid:true (a Baki/credit bill is completed by staff but
+  // stays paid:false until the tab is settled). Using paid alone meant a
+  // Baki bill kept showing on this screen forever instead of resetting.
+  const allDone = myOrders.length && myOrders.every(o=>o.status==='completed');
+  const list = allDone ? [] : myOrders; // once the table's bill is fully settled, treat as a fresh session
+  if(!list.length){
+    box.innerHTML = `<div class="empty-order">
+      <div class="big">📋</div>
+      <p>अहिले कुनै order छैन।<br>Menu बाट खाना order गर्नुहोस्।</p>
+      <button class="btn-gold" onclick="go('menu')">Menu हेर्नुहोस्</button>
+    </div>`;
+    return;
+  }
+  const activeCount = list.filter(o=>!o.paid).length;
+  let html = `<div style="padding:12px 16px 0;font-size:12px;color:var(--dim)">
+    Table <b style="color:var(--text)">${tableNo}</b> · जम्मा <b style="color:var(--gold2)">${list.length}</b> order
+    ${activeCount?` · <span style="color:var(--orange)">${activeCount} active</span>`:''}
+  </div>`;
+
+  list.forEach(o=>{
+    const dateStr = fmtDateTime(o.createdAt);
+    let itemsHtml = (o.items||[]).map(it=>`<div class="oi-row"><span>${escapeHtml(it.name)} × ${it.qty}</span><span>Rs ${it.qty*it.price}</span></div>`).join('');
+    if(o.note) itemsHtml += `<div class="oi-note">📝 ${escapeHtml(o.note)}</div>`;
+    html += `
+    <div class="order-status-card" style="margin-top:12px">
+      <div class="status-header">
+        <div>
+          <div style="font-weight:700;font-size:15px">Order #${o.id.slice(-6).toUpperCase()}</div>
+          <div class="order-meta">🕐 ${dateStr} · Table <b>${o.table}</b></div>
+        </div>
+        <span class="status-badge ${STATUS_CLASS[o.paid?'completed':o.status]||'sb-pending'}">${o.paid?'Paid':(STATUS_LABEL[o.status]||o.status)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:4px">${o.paid?STATUS_MSG.completed:(STATUS_MSG[o.status]||'')}</div>
+      ${o.paid?'':buildTrackHtml(o.status)}
+    </div>
+    <div class="order-items-box">
+      <h4>Items</h4>
+      ${itemsHtml}
+      <div class="oi-row" style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--hair)"><span class="n">Tax</span><span>Rs ${o.tax||0}</span></div>
+      <div class="oi-row"><b>Order Total</b><b style="color:var(--gold2)">Rs ${o.total||0}</b></div>
+    </div>`;
+  });
+
+  const unpaid = list.filter(x=>!x.paid);
+  if(unpaid.length){
+    const gSub = unpaid.reduce((s,o)=>s+(o.subtotal||0),0);
+    const gTax = unpaid.reduce((s,o)=>s+(o.tax||0),0);
+    const gTot = unpaid.reduce((s,o)=>s+(o.total||0),0);
+    html += `<div class="order-items-box" style="border-color:var(--gold)">
+      <h4>Unpaid Summary</h4>
+      <div class="oi-row"><span class="n">${unpaid.length} order(s) subtotal</span><span>Rs ${gSub}</span></div>
+      <div class="oi-row"><span class="n">Tax</span><span>Rs ${gTax}</span></div>
+      <div class="oi-row"><b>Grand Total</b><b style="color:var(--gold2)">Rs ${gTot}</b></div>
+    </div>`;
+  }
+  html += `<div style="padding:14px 16px 24px;display:flex;gap:10px">
+    <button class="btn-outline" style="flex:1" onclick="go('menu')">+ थप Order</button>
+    <button class="btn-gold" style="flex:1" onclick="go('bill')">Bill हेर्नुहोस्</button>
+  </div>`;
+  box.innerHTML = html;
+}
+
+function renderBill(){
+  const box = document.getElementById('billContent');
+  const allDone = myOrders.length && myOrders.every(x=>x.status==='completed');
+  const activeOrders = allDone ? [] : myOrders; // once fully settled, this table's session is treated as fresh
+  const unpaid = activeOrders.filter(x=>!x.paid);
+
+  if(!activeOrders.length){
+    box.innerHTML = `<div class="empty-order">
+      <div class="big">🧾</div>
+      <p>अहिले कुनै bill छैन।<br>पहिले order गर्नुहोस्।</p>
+      <button class="btn-gold" onclick="go('menu')">Menu हेर्नुहोस्</button>
+    </div>`;
+    return;
+  }
+
+  let subtotal = 0, sections = '';
+  unpaid.forEach(ord=>{
+    const dt = fmtDateTime(ord.createdAt);
+    sections += `<div style="padding:10px 16px 4px;font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.3px;border-top:1px solid var(--hair)">🕐 ${dt} · Order #${ord.id.slice(-6).toUpperCase()} · ${STATUS_LABEL[ord.status]||ord.status}</div>`;
+    (ord.items||[]).forEach(it=>{
+      subtotal += it.qty*it.price;
+      sections += `<div class="bt-row"><span>${escapeHtml(it.name)}</span><span>${it.qty}</span><span>Rs ${it.qty*it.price}</span></div>`;
+    });
+    if(ord.note) sections += `<div style="padding:4px 16px 8px;font-size:11px;color:var(--orange);font-style:italic">📝 ${escapeHtml(ord.note)}</div>`;
+  });
+  const tax = Math.round(subtotal*0.13);
+  const total = subtotal + tax;
+
+  box.innerHTML = `
+    <div class="bill-card">
+      <div class="bill-head">
+        <div class="cafe cinzel">${CAFE.name}</div>
+        <div class="info">${CAFE.address}<br>Table ${tableNo} · ${unpaid.length} order(s)<br>${fmtDateTime(new Date())}</div>
+      </div>
+      <div class="bill-table">
+        <div class="bt-row head"><span>Item</span><span>Qty</span><span>Amount</span></div>
+        ${sections}
+      </div>
+      <div class="bill-totals">
+        <div class="bt-sum"><span>Subtotal</span><span>Rs ${subtotal}</span></div>
+        <div class="bt-sum"><span>Tax / Service</span><span>Rs ${tax}</span></div>
+        <div class="bt-sum grand"><span>Grand Total</span><span>Rs ${total}</span></div>
+      </div>
+    </div>
+    <div style="margin:0 16px 12px;padding:14px 16px;background:var(--card);border:1px solid var(--hair);border-radius:14px;font-size:12.5px;color:var(--dim);line-height:1.55">
+      💳 भुक्तानी <b style="color:var(--text)">Counter</b> मा हुन्छ।<br>बिल तयार छ — Counter मा गएर तिर्नुहोस्।
+    </div>
+    <div class="pay-cta">
+      <button class="place-btn" onclick="requestBill(${total})"><span>🔔 Counter लाई Bill Ready सूचना</span><span>Rs ${total}</span></button>
+      <button class="btn-outline" style="width:100%;margin-top:10px" onclick="go('orders')">← My Order मा फर्कनुहोस्</button>
+    </div>
+  `;
+}
+function requestBill(total){
+  sendWaiter('🧾 Bill Ready — Table '+tableNo+' · Rs '+total+' · Customer coming to counter');
+  toast('✅ Counter लाई सूचना गयो · कृपया Counter मा गएर तिर्नुहोस्');
+}
+
+function renderReceipt(){
+  const paid = myOrders.filter(o=>o.paid);
+  if(!paid.length) return;
+  let items = [], sub=0;
+  paid.forEach(o=>{ (o.items||[]).forEach(it=>{ items.push(it); sub+=it.qty*it.price; }); });
+  const tax=Math.round(sub*0.13), tot=paid.reduce((s,o)=>s+(o.netTotal||o.total||0),0);
+  const last = paid[0];
+  const method = last.paymentMethod || 'cash';
+  document.getElementById('receiptContent').innerHTML = `
+    <div class="receipt-box">
+      <div class="rc">${CAFE.name}</div>
+      <div class="ri">${CAFE.address}<br>Tel: ${CAFE.phone}</div>
+      <hr>
+      <div class="rl"><span>Table</span><span>${tableNo}</span></div>
+      <div class="rl"><span>Order</span><span>${paid.map(p=>'#'+p.id.slice(-6).toUpperCase()).join(', ')}</span></div>
+      <div class="rl"><span>Payment</span><span>${method.toUpperCase()}</span></div>
+      <hr>
+      ${items.map(it=>`<div class="rl"><span>${escapeHtml(it.name)} x${it.qty}</span><span>${it.qty*it.price}</span></div>`).join('')}
+      <hr>
+      <div class="rl"><span>Subtotal</span><span>${sub}</span></div>
+      <div class="rl"><span>Tax</span><span>${tax}</span></div>
+      <div class="rl rt"><span>TOTAL</span><span>Rs ${tot}</span></div>
+      <hr>
+      <div class="ri" style="margin-top:8px">Thank you! फेरि आउनुहोस् 🙏</div>
+    </div>`;
+}
+
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if(el) el.classList.add('active');
+  window.scrollTo(0,0);
+  const nav = document.getElementById('bottomNav');
+  if(id==='splash'||id==='sending') nav.style.display='none'; else nav.style.display='flex';
+  document.querySelectorAll('.nav-item[data-tab]').forEach(n=>n.classList.remove('active'));
+  if(id==='menu'){ document.querySelector('.nav-item[data-tab="menu"]')?.classList.add('active'); filterMenu(); }
+  if(id==='orders'){ document.querySelector('.nav-item[data-tab="orders"]')?.classList.add('active'); renderMyOrder(); }
+  if(id==='bill'||id==='receipt'){ document.querySelector('.nav-item[data-tab="bill"]')?.classList.add('active'); if(id==='bill') renderBill(); }
+}
+
+function openWaiter(){ document.getElementById('cwOverlay').classList.add('open'); document.getElementById('cwSheet').classList.add('open'); }
+function closeWaiter(){ document.getElementById('cwOverlay').classList.remove('open'); document.getElementById('cwSheet').classList.remove('open'); }
+function sendWaiter(msg){
+  closeWaiter();
+  if(window.rtdbReady && waiterRef){
+    waiterRef.push({
+      table: normTable(tableNo), message: msg, resolved: false,
+      createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
+    }).then(()=>{
+      toast('🔔 '+msg+' — Table '+tableNo+' · Staff notified');
+    }).catch(err=>{
+      console.error('Waiter call failed:', err);
+      toast('⚠️ Notification पठाउन सकिएन — फेरि प्रयास गर्नुहोस्।');
+    });
+  } else {
+    toast('⚠️ Firebase जोडिएको छैन — Notification पठाउन सकिएन।');
+  }
+}
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toastTxt').textContent=msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3200);
+}
+</script>
+</body>
+</html>
