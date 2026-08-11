@@ -432,15 +432,19 @@ if(window.rtdbReady){
 }
 
 function renderChips(){
+  // Order: सबै, then 🌟 Today Special, then ⭐ Best Sellers, then the rest of the
+  // real categories (Add-On is always pushed last — handled in allCategories' sort).
+  const hasSpecial = liveMenu.some(it=>it.todaySpecial);
   const hasBest = liveMenu.some(it=>it.bestSeller);
   let html = `<div class="chip ${selectedCat==='__all__'?'active':''}" data-cat="__all__" onclick="setCat(this)">सबै</div>`;
-  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">🌟 Today Special</div>`;
+  if(hasSpecial) html += `<div class="chip ${selectedCat==='__special__'?'active':''}" data-cat="__special__" onclick="setCat(this)">🌟 Today Special</div>`;
+  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">⭐ Best Sellers</div>`;
   allCategories.forEach(c=>{ html += `<div class="chip ${selectedCat===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCat(this)">${categoryIcon(c)} ${escapeHtml(c)}</div>`; });
   document.getElementById('chips').innerHTML = html;
 }
 function setCat(el){
   const cat = el.dataset.cat;
-  if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__'){
+  if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__' && cat!=='__special__'){
     const header = [...document.querySelectorAll('.menu-section-header')].find(h=>h.dataset.sectionCat===cat);
     if(header){ header.scrollIntoView({behavior:'smooth', block:'start'}); return; }
   }
@@ -457,7 +461,8 @@ function setCat(el){
 function filterMenu(){
   const q = (document.getElementById('search').value||'').toLowerCase().trim();
   let items = liveMenu.slice();
-  if(selectedCat==='__best__') items = items.filter(i=>i.bestSeller);
+  if(selectedCat==='__special__') items = items.filter(i=>i.todaySpecial);
+  else if(selectedCat==='__best__') items = items.filter(i=>i.bestSeller);
   else if(selectedCat!=='__all__') items = items.filter(i=>i.category===selectedCat);
   if(q) items = items.filter(i=>(i.name||'').toLowerCase().includes(q)||(i.category||'').toLowerCase().includes(q));
   renderMenu(items, !q && selectedCat==='__all__');
@@ -487,20 +492,30 @@ function renderMenu(items, grouped){
   const list = document.getElementById('menuList');
   if(!items.length){ list.innerHTML='<div style="text-align:center;color:var(--dim);padding:40px 0;font-size:13px">कुनै item भेटिएन</div>'; return; }
   if(grouped){
+    // Section order mirrors the chips: 🌟 Today Special, then ⭐ Best Sellers, then the
+    // rest of the real categories alphabetically, with ➕ Add-On always pushed to the end.
     const groups = {};
     items.forEach(it=>{ const c=it.category||'General'; (groups[c]=groups[c]||[]).push(it); });
-    const catNames = Object.keys(groups).sort((a,b)=>{
-      const al = a.toLowerCase(), bl = b.toLowerCase();
-      if(al==='today special') return -1;
-      if(bl==='today special') return 1;
-      if(al==='add-on') return 1;
-      if(bl==='add-on') return -1;
-      return a.localeCompare(b);
+    const todaySpecialItems = groups['Today Special'];
+    const bestSellerItems = items.filter(it=>it.bestSeller);
+    const otherCats = Object.keys(groups)
+      .filter(c=>c.toLowerCase()!=='today special')
+      .sort((a,b)=>{
+        if(a.toLowerCase()==='add-on') return 1;
+        if(b.toLowerCase()==='add-on') return -1;
+        return a.localeCompare(b);
+      });
+    let html = '';
+    if(todaySpecialItems && todaySpecialItems.length){
+      html += `<div class="menu-section-header" data-section-cat="__special__">🌟 Today Special</div>${todaySpecialItems.map(itemCardHtml).join('')}`;
+    }
+    if(bestSellerItems.length){
+      html += `<div class="menu-section-header" data-section-cat="__best__">⭐ Best Sellers</div>${bestSellerItems.map(itemCardHtml).join('')}`;
+    }
+    otherCats.forEach(cat=>{
+      html += `<div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>${groups[cat].map(itemCardHtml).join('')}`;
     });
-    list.innerHTML = catNames.map(cat=>`
-      <div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>
-      ${groups[cat].map(itemCardHtml).join('')}
-    `).join('');
+    list.innerHTML = html;
     setupScrollSpy();
   } else {
     list.innerHTML = items.map(itemCardHtml).join('');
