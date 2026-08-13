@@ -311,13 +311,14 @@ const firebaseConfig = {
   measurementId: "G-2DNHWRTM8Q"
 };
 window.rtdbReady = false;
-let rtdb, ordersRef, menuRef, waiterRef;
+let rtdb, ordersRef, menuRef, waiterRef, customerVoiceLangRef;
 try {
   firebase.initializeApp(firebaseConfig);
   rtdb = firebase.database();
   ordersRef = rtdb.ref('orders');
   menuRef = rtdb.ref('menu');
   waiterRef = rtdb.ref('waiterCalls');
+  customerVoiceLangRef = rtdb.ref('settings/customerVoiceLang');
   window.rtdbReady = true;
 } catch(e) {
   console.error('Firebase init failed:', e);
@@ -354,20 +355,12 @@ const STATUS_SPOKEN = {
   }
 };
 let trackVoiceLang = 'ne'; // updated live from settings/customerVoiceLang (controlled from the staff app)
-let customerNotifStyle = 'both'; // beep | voice | both — updated live from settings/customerNotifStyle
-let customerNotifStages = {}; // per-stage on/off — updated live from settings/customerNotifStages
-if(window.rtdbReady){
-  rtdb.ref('settings/customerVoiceLang').on('value', snap => {
-    trackVoiceLang = (snap.val() === 'en') ? 'en' : 'ne';
-  });
-  rtdb.ref('settings/customerNotifStyle').on('value', snap => {
-    customerNotifStyle = snap.val() || 'both';
-  });
-  rtdb.ref('settings/customerNotifStages').on('value', snap => {
-    customerNotifStages = snap.val() || {};
+if(window.rtdbReady && customerVoiceLangRef){
+  customerVoiceLangRef.on('value', snap => {
+    const v = snap.val();
+    trackVoiceLang = (v === 'en') ? 'en' : 'ne';
   });
 }
-function stageEnabled(status){ return customerNotifStages[status] !== false; } // default on if never set by staff
 function speakStatus(status){
   try{
     const text = (STATUS_SPOKEN[trackVoiceLang] || STATUS_SPOKEN.ne)[status];
@@ -380,7 +373,7 @@ function speakStatus(status){
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function categoryIcon(cat){
-  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Today Special':'⭐' };
+  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Best Sellers':'⭐' };
   return map[cat] || '🍽️';
 }
 
@@ -397,15 +390,6 @@ const params = new URLSearchParams(location.search);
 tableNo = params.get('table') || '04';
 document.getElementById('tableTag').textContent = `Table ${tableNo} · Dine In`;
 document.getElementById('orderTableTag').textContent = `Table ${tableNo}`;
-// Table numbers must compare equal no matter how they were written — this
-// QR link may pass a zero-padded number ("04") while the staff app writes
-// and compares plain numbers ("4"). That mismatch was the real cause of
-// orders "disappearing": an order placed here for Table 4 (as "04") never
-// matched the staff app's Table Grid/Detail/Billing screens, which compare
-// against "4". Every write/comparison against Firebase below uses this
-// normalized form; on-screen labels still show the original tableNo so the
-// customer sees whatever their QR code said (e.g. "Table 04").
-function normTable(t){ return String(t==null?'':t).trim().replace(/^0+(?=\d)/,''); }
 
 setTimeout(()=>{ go('menu'); document.getElementById('bottomNav').style.display='flex'; }, 2000);
 
@@ -417,12 +401,7 @@ if(window.rtdbReady){
     menuRef.on('value', snapshot => {
       const val = snapshot.val() || {};
       liveMenu = Object.keys(val).map(id => ({ id, ...val[id] })).filter(it=>it.available);
-      allCategories = [...new Set(liveMenu.map(it=>it.category).filter(c=>c && c.toLowerCase()!=='today special'))]
-        .sort((a,b)=>{
-          if(a.toLowerCase()==='add-on') return 1;
-          if(b.toLowerCase()==='add-on') return -1;
-          return a.localeCompare(b);
-        });
+      allCategories = [...new Set(liveMenu.map(it=>it.category).filter(c=>c && c.toLowerCase()!=='best sellers'))].sort();
       renderChips();
       filterMenu();
     }, err => { console.error('Menu error:', err); showFirebaseUnavailable(); });
@@ -432,25 +411,17 @@ if(window.rtdbReady){
 }
 
 function renderChips(){
-  // Order: सबै, then 🌟 Today Special, then ⭐ Best Sellers, then the rest of the
-  // real categories (Add-On is always pushed last — handled in allCategories' sort).
-  const hasSpecial = liveMenu.some(it=>it.todaySpecial);
   const hasBest = liveMenu.some(it=>it.bestSeller);
   let html = `<div class="chip ${selectedCat==='__all__'?'active':''}" data-cat="__all__" onclick="setCat(this)">सबै</div>`;
-  if(hasSpecial) html += `<div class="chip ${selectedCat==='__special__'?'active':''}" data-cat="__special__" onclick="setCat(this)">🌟 Today Special</div>`;
-  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">⭐ Best Sellers</div>`;
+  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">★ Best</div>`;
   allCategories.forEach(c=>{ html += `<div class="chip ${selectedCat===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCat(this)">${categoryIcon(c)} ${escapeHtml(c)}</div>`; });
   document.getElementById('chips').innerHTML = html;
 }
 function setCat(el){
   const cat = el.dataset.cat;
-  if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__' && cat!=='__special__'){
+  if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__'){
     const header = [...document.querySelectorAll('.menu-section-header')].find(h=>h.dataset.sectionCat===cat);
     if(header){ header.scrollIntoView({behavior:'smooth', block:'start'}); return; }
-  }
-  if(cat==='__all__'){
-    const searchBox = document.getElementById('search');
-    if(searchBox) searchBox.value = ''; // tapping "सबै" always shows everything — clear any leftover search text too
   }
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
@@ -461,8 +432,7 @@ function setCat(el){
 function filterMenu(){
   const q = (document.getElementById('search').value||'').toLowerCase().trim();
   let items = liveMenu.slice();
-  if(selectedCat==='__special__') items = items.filter(i=>i.todaySpecial);
-  else if(selectedCat==='__best__') items = items.filter(i=>i.bestSeller);
+  if(selectedCat==='__best__') items = items.filter(i=>i.bestSeller);
   else if(selectedCat!=='__all__') items = items.filter(i=>i.category===selectedCat);
   if(q) items = items.filter(i=>(i.name||'').toLowerCase().includes(q)||(i.category||'').toLowerCase().includes(q));
   renderMenu(items, !q && selectedCat==='__all__');
@@ -492,30 +462,13 @@ function renderMenu(items, grouped){
   const list = document.getElementById('menuList');
   if(!items.length){ list.innerHTML='<div style="text-align:center;color:var(--dim);padding:40px 0;font-size:13px">कुनै item भेटिएन</div>'; return; }
   if(grouped){
-    // Section order mirrors the chips: 🌟 Today Special, then ⭐ Best Sellers, then the
-    // rest of the real categories alphabetically, with ➕ Add-On always pushed to the end.
     const groups = {};
     items.forEach(it=>{ const c=it.category||'General'; (groups[c]=groups[c]||[]).push(it); });
-    const todaySpecialItems = groups['Today Special'];
-    const bestSellerItems = items.filter(it=>it.bestSeller);
-    const otherCats = Object.keys(groups)
-      .filter(c=>c.toLowerCase()!=='today special')
-      .sort((a,b)=>{
-        if(a.toLowerCase()==='add-on') return 1;
-        if(b.toLowerCase()==='add-on') return -1;
-        return a.localeCompare(b);
-      });
-    let html = '';
-    if(todaySpecialItems && todaySpecialItems.length){
-      html += `<div class="menu-section-header" data-section-cat="__special__">🌟 Today Special</div>${todaySpecialItems.map(itemCardHtml).join('')}`;
-    }
-    if(bestSellerItems.length){
-      html += `<div class="menu-section-header" data-section-cat="__best__">⭐ Best Sellers</div>${bestSellerItems.map(itemCardHtml).join('')}`;
-    }
-    otherCats.forEach(cat=>{
-      html += `<div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>${groups[cat].map(itemCardHtml).join('')}`;
-    });
-    list.innerHTML = html;
+    const catNames = Object.keys(groups).sort();
+    list.innerHTML = catNames.map(cat=>`
+      <div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>
+      ${groups[cat].map(itemCardHtml).join('')}
+    `).join('');
     setupScrollSpy();
   } else {
     list.innerHTML = items.map(itemCardHtml).join('');
@@ -588,7 +541,7 @@ function placeOrder(){
   const note = document.getElementById('orderNote').value.trim();
 
   const orderData = {
-    table: normTable(tableNo), items, note, subtotal: sub, tax, service:0, total,
+    table: String(tableNo), items, note, subtotal: sub, tax, service:0, total,
     status: 'pending', paid:false,
     createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
   };
@@ -600,6 +553,15 @@ function placeOrder(){
     cart = {};
     document.getElementById('orderNote').value='';
     renderCart(); filterMenu();
+    // Show the just-placed order immediately instead of waiting for the next
+    // Firebase 'value' sync round-trip — avoids it looking like the order only
+    // appears once staff Accept it.
+    if(!myOrders.some(o=>o.id===ref.key)){
+      myOrders.unshift({ id: ref.key, ...orderData, paid:false });
+      const activeCount = myOrders.filter(o=>!o.paid).length;
+      document.getElementById('orderBadge').classList.toggle('show', activeCount>0);
+      document.getElementById('orderBadge').textContent = activeCount;
+    }
     setTimeout(()=>{
       go('orders');
       toast('✅ Order Kitchen मा पठाइयो');
@@ -614,18 +576,24 @@ function placeOrder(){
 if(window.rtdbReady){
   ordersRef.on('value', snapshot=>{
     const val = snapshot.val() || {};
-    const all = Object.keys(val).map(id=>({id, ...val[id]}));
-    myOrders = all.filter(o=>normTable(o.table)===normTable(tableNo)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    // Normalize the "paid" flag: the staff/kitchen Android app writes payment completion
+    // as "isPaid" (and always marks status "completed" once paid), while this website has
+    // always read "paid". Without this normalization, o.paid is undefined forever for any
+    // order paid from the Android app, so old paid orders never leave "My Order" and a new
+    // customer's session never resets.
+    const all = Object.keys(val).map(id=>{
+      const o = { id, ...val[id] };
+      o.paid = !!(o.paid || o.isPaid || o.status === 'completed');
+      return o;
+    });
+    myOrders = all.filter(o=>o.table===String(tableNo)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 
     myOrders.forEach(o=>{
       const prev = previousStatusMap[o.id];
       if(prev !== undefined && prev !== o.status && STATUS_MSG[o.status]){
         toast(STATUS_MSG[o.status]);
-        if(stageEnabled(o.status)){
-          if(customerNotifStyle === 'beep'){ beep(); }
-          else if(customerNotifStyle === 'voice'){ speakStatus(o.status); }
-          else { beep(); setTimeout(()=>speakStatus(o.status), 450); } // both — beep first, then voice
-        }
+        beep();
+        setTimeout(()=>speakStatus(o.status), 450); // beep first, then voice — not overlapping
       }
     });
     const newMap = {}; myOrders.forEach(o=>{ newMap[o.id]=o.status; }); previousStatusMap = newMap;
@@ -666,14 +634,11 @@ function fmtDateTime(d){ if(!d) return ''; return new Date(d).toLocaleString('en
 function buildTrackHtml(status){
   const steps = ['pending','accepted','cooking','ready','served'];
   const labels = ['Sent','Accept','Cook','Ready','Served'];
-  const normalized = String(status||'').trim().toLowerCase();
-  let stepIdx = steps.indexOf(normalized === 'completed' ? 'served' : normalized);
-  if(stepIdx === -1) stepIdx = 0; // unrecognized status — still show step 1 as active instead of no color at all
-  const isFinalStep = stepIdx === steps.length - 1; // 'served' — nothing left pending, so mark it done (checkmark) not active (gold)
+  const stepIdx = steps.indexOf(status === 'completed' ? 'served' : status);
   let html = '<div class="track-mini">';
   steps.forEach((s,i)=>{
-    const done = i < stepIdx || (isFinalStep && i === stepIdx);
-    const active = i === stepIdx && !isFinalStep;
+    const done = i < stepIdx;
+    const active = i === stepIdx;
     html += `<div class="tm-step">
       ${i>0?`<div class="tm-line ${i<=stepIdx?'done':''}"></div>`:''}
       <div class="tm-dot ${done?'done':''} ${active?'active':''}">${done?'✓':(i+1)}</div>
@@ -685,12 +650,8 @@ function buildTrackHtml(status){
 
 function renderMyOrder(){
   const box = document.getElementById('orderContent');
-  // Billing is "done" for the table once every order is status:'completed' —
-  // not necessarily paid:true (a Baki/credit bill is completed by staff but
-  // stays paid:false until the tab is settled). Using paid alone meant a
-  // Baki bill kept showing on this screen forever instead of resetting.
-  const allDone = myOrders.length && myOrders.every(o=>o.status==='completed');
-  const list = allDone ? [] : myOrders; // once the table's bill is fully settled, treat as a fresh session
+  const allPaid = myOrders.length && myOrders.every(o=>o.paid);
+  const list = allPaid ? [] : myOrders; // once the table's bill is fully paid, treat as a fresh session
   if(!list.length){
     box.innerHTML = `<div class="empty-order">
       <div class="big">📋</div>
@@ -750,8 +711,8 @@ function renderMyOrder(){
 
 function renderBill(){
   const box = document.getElementById('billContent');
-  const allDone = myOrders.length && myOrders.every(x=>x.status==='completed');
-  const activeOrders = allDone ? [] : myOrders; // once fully settled, this table's session is treated as fresh
+  const allPaid = myOrders.length && myOrders.every(x=>x.paid);
+  const activeOrders = allPaid ? [] : myOrders; // once fully paid, this table's session is treated as fresh
   const unpaid = activeOrders.filter(x=>!x.paid);
 
   if(!activeOrders.length){
@@ -852,7 +813,7 @@ function sendWaiter(msg){
   closeWaiter();
   if(window.rtdbReady && waiterRef){
     waiterRef.push({
-      table: normTable(tableNo), message: msg, resolved: false,
+      table: String(tableNo), message: msg, resolved: false,
       createdAt: (firebase.database.ServerValue ? firebase.database.ServerValue.TIMESTAMP : Date.now())
     }).then(()=>{
       toast('🔔 '+msg+' — Table '+tableNo+' · Staff notified');
