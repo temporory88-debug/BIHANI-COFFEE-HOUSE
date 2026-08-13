@@ -373,8 +373,22 @@ function speakStatus(status){
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function categoryIcon(cat){
-  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Best Sellers':'⭐' };
+  const map = { 'Refreshers':'🥤','Bubble Tea':'🧋','Hot Coffee':'☕','Iced Coffee':'🧊','Coffee Alternatives':'🫖','Lassi':'🥛','Momo':'🥟','Snacks':'🍟','Sandwich & Wraps':'🥪','Noodles & Thukpa':'🍜','Pizza':'🍕','Burger':'🍔','Pasta':'🍝','Desserts':'🍨','Others':'🥤','Add-On':'➕','Add on':'➕','Best Sellers':'⭐','Today Special':'🍽️' };
   return map[cat] || '🍽️';
+}
+// Ordering: Today Special first, Best Sellers second, everything else after, Add on last
+function catSortKey(cat){
+  const c = (cat||'').trim().toLowerCase();
+  if(c === 'today special') return 0;
+  if(c === 'add-on' || c === 'add on') return 2;
+  return 1;
+}
+function sortCats(arr){
+  return arr.slice().sort((a,b)=>{
+    const ka = catSortKey(a), kb = catSortKey(b);
+    if(ka !== kb) return ka - kb;
+    return a.localeCompare(b);
+  });
 }
 
 let cart = {};
@@ -382,12 +396,12 @@ let scrollObserver = null;
 let liveMenu = [];
 let allCategories = [];
 let selectedCat = '__all__';
-let tableNo = '04';
+let tableNo = '1';
 let myOrders = [];
 let previousStatusMap = {};
 
 const params = new URLSearchParams(location.search);
-tableNo = params.get('table') || '04';
+tableNo = params.get('table') || '1';
 document.getElementById('tableTag').textContent = `Table ${tableNo} · Dine In`;
 document.getElementById('orderTableTag').textContent = `Table ${tableNo}`;
 
@@ -412,9 +426,17 @@ if(window.rtdbReady){
 
 function renderChips(){
   const hasBest = liveMenu.some(it=>it.bestSeller);
-  let html = `<div class="chip ${selectedCat==='__all__'?'active':''}" data-cat="__all__" onclick="setCat(this)">सबै</div>`;
-  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">★ Best</div>`;
-  allCategories.forEach(c=>{ html += `<div class="chip ${selectedCat===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCat(this)">${categoryIcon(c)} ${escapeHtml(c)}</div>`; });
+  const sortedCats = sortCats(allCategories);
+  const todayCats = sortedCats.filter(c=>catSortKey(c)===0);
+  const midCats = sortedCats.filter(c=>catSortKey(c)===1);
+  const addOnCats = sortedCats.filter(c=>catSortKey(c)===2);
+  const chipHtml = c => `<div class="chip ${selectedCat===c?'active':''}" data-cat="${escapeHtml(c)}" onclick="setCat(this)">${categoryIcon(c)} ${escapeHtml(c)}</div>`;
+
+  let html = '';
+  todayCats.forEach(c=>{ html += chipHtml(c); });
+  if(hasBest) html += `<div class="chip ${selectedCat==='__best__'?'active':''}" data-cat="__best__" onclick="setCat(this)">⭐ Best Sellers</div>`;
+  midCats.forEach(c=>{ html += chipHtml(c); });
+  addOnCats.forEach(c=>{ html += chipHtml(c); });
   document.getElementById('chips').innerHTML = html;
 }
 function setCat(el){
@@ -464,7 +486,7 @@ function renderMenu(items, grouped){
   if(grouped){
     const groups = {};
     items.forEach(it=>{ const c=it.category||'General'; (groups[c]=groups[c]||[]).push(it); });
-    const catNames = Object.keys(groups).sort();
+    const catNames = sortCats(Object.keys(groups));
     list.innerHTML = catNames.map(cat=>`
       <div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>
       ${groups[cat].map(itemCardHtml).join('')}
