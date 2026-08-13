@@ -214,7 +214,7 @@ body{
 <div class="screen center-screen" id="sending">
   <div style="font-size:48px;margin-bottom:8px">☕</div>
   <h2 class="cinzel" style="font-size:18px">Sending Order...</h2>
-  <p style="font-size:12px;color:var(--dim);margin-top:6px">Kitchen सम्म पुर्‍याउँदै — एक छिन</p>
+  <p style="font-size:12px;color:var(--dim);margin-top:6px">Order Counter सम्म पुर्‍याउँदै — एक छिन</p>
 </div>
 
 <div class="screen" id="orders">
@@ -328,12 +328,12 @@ const CAFE = { name: 'Bihani Coffee House', address: 'Bhojpur-7, Bank Road', pho
 const STATUS_LABEL = {pending:'Pending',accepted:'Accepted',cooking:'Cooking',ready:'Ready',served:'Served',completed:'Paid'};
 const STATUS_CLASS = {pending:'sb-pending',accepted:'sb-accepted',cooking:'sb-cooking',ready:'sb-ready',served:'sb-served',completed:'sb-paid'};
 const STATUS_MSG = {
-  pending: 'Order kitchen मा पठाइयो — accept हुन पर्खँदै',
-  accepted: 'Kitchen ले order accept गर्‍यो',
-  cooking: 'खाना पकाइँदै छ...',
-  ready: 'तयार! चाँडै table मा आउँछ',
-  served: 'Serve भयो — मीठो खानुहोस्! Enjoy your meal 🍽️',
-  completed: 'भुक्तानी पूरा भयो — धन्यवाद! फेरि आउनुहोस् 🙏'
+  pending: 'ए है! तपाईंको अर्डर काउन्टरमा आइपुगिसक्यो! 😄 अब काउन्टरबाट एउटा सानो \'ओके\' चाहियो—त्यसपछि सिधै किचनतिर यात्रा सुरु हुन्छ। 👨‍🍳🍽️ एकछिन है, स्वादिलो कुरा आउँदैछ!',
+  accepted: 'येस! तपाईंको अर्डर स्वीकार भयो! 😄 अब अर्डर किचनतिर पठाइसक्यौँ। 👨‍🍳 अब हाम्रो शेफको जादु सुरु हुन्छ—तपाईं चाहिँ ढुक्क भएर बस्नुहोस् है!',
+  cooking: 'तपाईंको अर्डर मज्जाले तयार हुँदैछ! 👨‍🍳 अलिकति धैर्य गर्नुहोस् है—राम्रो स्वादलाई हतार गर्‍यो भने मज्जा नै कहाँ आउँछ र! 😄 स्वादिलो कुरा आउँदैछ!',
+  ready: 'खुसीको खबर! 🔔 तपाईंको अर्डर तयार भयो! 😄 अब हाम्रो स्टाफले माया र मुस्कानसहित तपाईंको टेबलतिर ल्याउँदै हुनुहुन्छ। तयार हुनुहोस्—स्वादको पालो अब तपाईंको! ❤️🍽️',
+  served: 'ल है! 😄 तपाईंको अर्डर टेबलमा आइपुग्यो। अब हाम्रो काम केही बेरलाई सकियो, तपाईंको काम सुरु भयो—मज्जाले खानुहोस्, स्वाद लिनुहोस्, अनि पेटलाई पनि खुसी बनाउनुहोस्! 😂🍽️',
+  completed: 'भुक्तानी सफलतापूर्वक पूरा भयो! 💰😊 तपाईंको साथ र मायाका लागि धेरै धेरै धन्यवाद। फेरि आउनुहोला है—हामी तपाईंलाई फेरि स्वागत गर्न तयार नै छौँ! ❤️'
 };
 // Spoken (TTS) versions — bilingual, chosen via the language toggle on the My Order screen
 const STATUS_SPOKEN = {
@@ -441,7 +441,7 @@ function renderChips(){
 }
 function setCat(el){
   const cat = el.dataset.cat;
-  if(selectedCat==='__all__' && cat!=='__all__' && cat!=='__best__'){
+  if(selectedCat==='__all__' && cat!=='__all__'){
     const header = [...document.querySelectorAll('.menu-section-header')].find(h=>h.dataset.sectionCat===cat);
     if(header){ header.scrollIntoView({behavior:'smooth', block:'start'}); return; }
   }
@@ -487,10 +487,28 @@ function renderMenu(items, grouped){
     const groups = {};
     items.forEach(it=>{ const c=it.category||'General'; (groups[c]=groups[c]||[]).push(it); });
     const catNames = sortCats(Object.keys(groups));
-    list.innerHTML = catNames.map(cat=>`
+    const todayCats = catNames.filter(c=>catSortKey(c)===0);
+    const midCats = catNames.filter(c=>catSortKey(c)===1);
+    const addOnCats = catNames.filter(c=>catSortKey(c)===2);
+    // Best Sellers gets its own scroll section, right after Today Special —
+    // items already shown under Today Special are excluded so nothing repeats.
+    const bestItems = items.filter(it=>it.bestSeller && catSortKey(it.category)!==0);
+
+    const sectionHtml = cat => `
       <div class="menu-section-header" data-section-cat="${escapeHtml(cat)}">${categoryIcon(cat)} ${escapeHtml(cat)}</div>
       ${groups[cat].map(itemCardHtml).join('')}
-    `).join('');
+    `;
+
+    let html = todayCats.map(sectionHtml).join('');
+    if(bestItems.length){
+      html += `
+        <div class="menu-section-header" data-section-cat="__best__">⭐ Best Sellers</div>
+        ${bestItems.map(itemCardHtml).join('')}
+      `;
+    }
+    html += midCats.map(sectionHtml).join('');
+    html += addOnCats.map(sectionHtml).join('');
+    list.innerHTML = html;
     setupScrollSpy();
   } else {
     list.innerHTML = items.map(itemCardHtml).join('');
@@ -586,7 +604,7 @@ function placeOrder(){
     }
     setTimeout(()=>{
       go('orders');
-      toast('✅ Order Kitchen मा पठाइयो');
+      toast('📥 Order Counter मा पठाइयो');
     }, 1400);
   }).catch(err=>{
     console.error('Order push failed:', err);
@@ -821,6 +839,9 @@ function go(id){
   const el = document.getElementById(id);
   if(el) el.classList.add('active');
   window.scrollTo(0,0);
+  // Float Cart / "View Cart" button belongs only on the Menu screen — hide it
+  // everywhere else so it doesn't float over Sending Order, My Order, etc.
+  document.getElementById('floatCart').style.display = (id==='menu') ? '' : 'none';
   const nav = document.getElementById('bottomNav');
   if(id==='splash'||id==='sending') nav.style.display='none'; else nav.style.display='flex';
   document.querySelectorAll('.nav-item[data-tab]').forEach(n=>n.classList.remove('active'));
