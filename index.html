@@ -399,6 +399,7 @@ let selectedCat = '__all__';
 let tableNo = '1';
 let myOrders = [];
 let previousStatusMap = {};
+let justPlacedIds = new Set(); // orders pushed by this browser tab — their first appearance should announce immediately
 
 const params = new URLSearchParams(location.search);
 tableNo = params.get('table') || '1';
@@ -589,7 +590,15 @@ function placeOrder(){
   closeCart();
   go('sending');
 
-  ordersRef.push(orderData).then(ref=>{
+  // Generate the push key synchronously (before writing) and mark it as "ours" immediately.
+  // Firebase's local cache fires the 'value' listener optimistically the instant we write —
+  // often before this .set() promise resolves — so justPlacedIds must already contain the id
+  // by then, or the first-status announcement below gets silently skipped.
+  const newRef = ordersRef.push();
+  justPlacedIds.add(newRef.key);
+
+  newRef.set(orderData).then(()=>{
+    const ref = newRef;
     cart = {};
     document.getElementById('orderNote').value='';
     renderCart(); filterMenu();
@@ -608,6 +617,7 @@ function placeOrder(){
     }, 1400);
   }).catch(err=>{
     console.error('Order push failed:', err);
+    justPlacedIds.delete(newRef.key);
     toast('⚠️ Order पठाउन सकिएन।');
     go('menu');
   });
@@ -626,11 +636,26 @@ if(window.rtdbReady){
       o.paid = !!(o.paid || o.isPaid || o.status === 'completed');
       return o;
     });
-    myOrders = all.filter(o=>o.table===String(tableNo)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    const tableOrders = all.filter(o=>o.table===String(tableNo));
+    // A table's "session" ends the moment its bill is fully paid. Any order created at or
+    // before that last full-payment moment belongs to a past, already-settled customer and
+    // must never resurface in "My Order" for whoever sits at this table next — even if a
+    // brand-new order arrives a moment later and used to make the old paid ones reappear.
+    const lastPaidAt = tableOrders.reduce((max,o)=> (o.paid && o.paidAt) ? Math.max(max,o.paidAt) : max, 0);
+    myOrders = tableOrders.filter(o => (o.createdAt||0) > lastPaidAt).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 
     myOrders.forEach(o=>{
       const prev = previousStatusMap[o.id];
-      if(prev !== undefined && prev !== o.status && STATUS_MSG[o.status]){
+      if(prev === undefined && justPlacedIds.has(o.id)){
+        // Brand-new order this tab just placed — announce its first status right away
+        // instead of waiting for a status *change* (which never happens for "pending").
+        justPlacedIds.delete(o.id);
+        if(STATUS_MSG[o.status]){
+          toast(STATUS_MSG[o.status]);
+          beep();
+          setTimeout(()=>speakStatus(o.status), 450);
+        }
+      } else if(prev !== undefined && prev !== o.status && STATUS_MSG[o.status]){
         toast(STATUS_MSG[o.status]);
         beep();
         setTimeout(()=>speakStatus(o.status), 450); // beep first, then voice — not overlapping
