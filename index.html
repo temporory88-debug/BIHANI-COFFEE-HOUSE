@@ -363,7 +363,13 @@ if(window.rtdbReady && customerVoiceLangRef){
 }
 function speakStatus(status){
   try{
-    const text = (STATUS_SPOKEN[trackVoiceLang] || STATUS_SPOKEN.ne)[status];
+    // Speak the exact same message that's shown on screen (STATUS_MSG) instead of a separate
+    // short version — what's written is what gets spoken. Emoji are stripped first since
+    // speech engines either skip them silently or mispronounce them.
+    const stripForSpeech = s => String(s||'').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u27BF\uFE0F]/gu, '').replace(/\s+/g, ' ').trim();
+    const text = trackVoiceLang === 'en'
+      ? (STATUS_SPOKEN.en[status] || '')
+      : (stripForSpeech(STATUS_MSG[status]) || STATUS_SPOKEN.ne[status] || '');
     if(!text) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = trackVoiceLang === 'en' ? 'en-US' : 'ne-NP';
